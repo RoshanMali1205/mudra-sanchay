@@ -67,7 +67,17 @@ export const store: Store = {
   ownerCreated: false
 };
 
-const dataFile = join(dirname(fileURLToPath(import.meta.url)), "..", ".data", "local-store.json");
+function resolveDataFile() {
+  try {
+    const metaUrl = import.meta.url;
+    if (metaUrl) return join(dirname(fileURLToPath(metaUrl)), "..", ".data", "local-store.json");
+  } catch {
+    /* Netlify CJS bundle has no import.meta.url */
+  }
+  return join(process.cwd(), "apps/api/.data/local-store.json");
+}
+
+const dataFile = resolveDataFile();
 
 type PersistedStore = Omit<Store, "sessions" | "resetTokens"> & {
   sessions: Array<[string, string]>;

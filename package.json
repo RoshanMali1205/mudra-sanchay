@@ -9,11 +9,15 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @mudra-sanchay/api --filter @mudra-sanchay/web dev",
-    "build": "pnpm --filter @mudra-sanchay/shared build && pnpm --filter @mudra-sanchay/i18n build && pnpm --filter @mudra-sanchay/ui build && pnpm --filter @mudra-sanchay/api build && pnpm --filter @mudra-sanchay/web build",
+    "build": "pnpm --filter @mudra-sanchay/shared build && pnpm --filter @mudra-sanchay/i18n build && pnpm --filter @mudra-sanchay/ui build && pnpm --filter @mudra-sanchay/api build && pnpm --filter @mudra-sanchay/web build && node scripts/bundle-netlify-api.mjs",
+    "bundle:api": "node scripts/bundle-netlify-api.mjs",
     "lint": "pnpm -r --if-present lint",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present test",
     "preview": "pnpm --filter @mudra-sanchay/web preview"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

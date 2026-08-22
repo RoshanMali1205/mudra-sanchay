@@ -23,7 +23,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set("authorization", `Bearer ${token}`);
 
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 8000);
+  const timer = window.setTimeout(() => controller.abort(), 25000);
   if (init.signal) {
     init.signal.addEventListener("abort", () => controller.abort());
   }
@@ -34,12 +34,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       headers,
       signal: controller.signal
     });
-    const json = (await response.json().catch(() => ({}))) as { data?: T } & ApiErrorBody;
+    const json = (await response.json().catch(() => ({}))) as { data?: T; message?: string } & ApiErrorBody;
 
     if (!response.ok) {
       throw new ApiError(
         response.status,
-        json.error?.message ?? "Request failed",
+        json.error?.message ?? json.message ?? "Request failed",
         json.error
       );
     }
