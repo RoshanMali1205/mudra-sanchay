@@ -1,3 +1,7 @@
+-- Do not run this file on a shared existing Supabase project.
+-- It creates unprefixed public.businesses / public.farmers names.
+-- Use 202608230001_shared_project_mudra.sql instead.
+--
 -- Mudra Sanchay Phase 1 identity, configuration and farmer master.
 -- Enable required extensions.
 

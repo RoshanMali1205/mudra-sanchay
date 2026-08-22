@@ -112,6 +112,7 @@ export type Trip = {
   entries: CrateEntry[];
   totalCrates: number;
   totalFreightPaise: number;
+  farmerCount: number;
 };
 
 export type Payment = {
@@ -187,12 +188,33 @@ export type DashboardSummary = {
   to: string;
   crates: number;
   trips: number;
+  farmerCount: number;
   freightPaise: number;
   receivedPaise: number;
   expensesPaise: number;
   outstandingPaise: number;
   accrualProfitPaise: number;
   cashSurplusPaise: number;
+};
+
+export type DayFarmerRow = {
+  farmerId: string;
+  farmerCode: string;
+  fullName: string;
+  village: string;
+  crates: number;
+  freightPaise: number;
+  outstandingPaise: number;
+};
+
+export type DailySheet = {
+  from: string;
+  to: string;
+  trips: number;
+  crates: number;
+  farmerCount: number;
+  freightPaise: number;
+  farmers: DayFarmerRow[];
 };
 
 export type LedgerLine = {

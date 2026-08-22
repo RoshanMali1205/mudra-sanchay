@@ -44,7 +44,9 @@ export function FarmersPage() {
           imageAlt="Farm fields"
         />
       ) : (
-        data.map((farmer) => (
+        [...data]
+          .sort((a, b) => b.outstandingPaise - a.outstandingPaise)
+          .map((farmer) => (
           <Link key={farmer.id} to={`/farmers/${farmer.id}`} className="list-card ms-card" style={{ marginTop: 12, display: "block" }}>
             <div className="row-between">
               <strong>{farmer.fullName}</strong>
@@ -53,10 +55,14 @@ export function FarmersPage() {
             <p className="muted">
               {farmer.village}
               {farmer.mobile ? ` · ${farmer.mobile}` : ""}
+              {farmer.totalCrates ? ` · ${farmer.totalCrates} ${t("trip.crates")}` : ""}
               {farmer.active ? "" : ` · ${t("action.archive")}`}
             </p>
             <p>
-              {t("farmer.outstandingBalance")}: {formatInrFromPaise(farmer.outstandingPaise)}
+              {t("farmer.outstandingBalance")}:{" "}
+              <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
+                {formatInrFromPaise(farmer.outstandingPaise)}
+              </strong>
             </p>
           </Link>
         ))

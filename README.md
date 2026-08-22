@@ -53,6 +53,26 @@ pnpm dev
 
 Without Supabase credentials the API runs in **local demo mode**: in-memory auth, farmers, trips and payments so the first vertical slice works on a laptop.
 
+## Add Mudra Sanchay to an existing Supabase project
+
+There is no “Add Application” button inside a Supabase project. This app lives beside your other app in the **same** project, using prefixed tables, a private storage bucket, and `app_memberships`.
+
+1. **Create tables** — Dashboard → SQL Editor → New query. Paste and run `supabase/migrations/202608230001_shared_project_mudra.sql`. That creates `mudra_businesses`, `mudra_profiles`, `mudra_farmers`, `mudra_vehicles`, `mudra_routes`, `mudra_trips`, `mudra_crate_entries`, `mudra_payments`, `mudra_expenses`, `mudra_market_receipts`, plus `app_memberships` and RLS.
+2. **Receipts bucket** — the same SQL creates private Storage bucket `mudra-receipts` with path `{userId}/{year}/{farmerId}/{file}`. Only users with `app_code = mudra_sanchay` can read or write it.
+3. **Auth URLs** — Authentication → URL Configuration. Keep the other app’s URLs. Add:
+   - Site URL: `https://your-mudra-sanchay.netlify.app`
+   - Redirects: `http://localhost:5173/**`, the Netlify site `/**`, and `https://deploy-preview-*--your-mudra-sanchay.netlify.app/**`
+4. **Local env** — Project Settings → Data API (or API). Copy Project URL and the publishable / anon key into `.env` and `apps/web/.env` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. Never put `service_role` in the web app.
+5. **Netlify env** — Site → Project configuration → Environment variables. Add the same two `VITE_` keys, then Deploys → Trigger deploy. Vite reads them at build time.
+6. **Brother’s login** — after he signs up, Authentication → Users → copy the user id, then in SQL Editor:
+
+```sql
+insert into public.app_memberships (user_id, app_code, role)
+values ('YOUR_BROTHER_AUTH_USER_ID', 'mudra_sanchay', 'admin');
+```
+
+Every Mudra table policy checks that membership. The other application’s tables stay untouched.
+
 ## Default business rules
 
 - Currency is INR, stored as integer paise

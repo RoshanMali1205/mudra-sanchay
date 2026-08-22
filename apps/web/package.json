@@ -13,6 +13,7 @@
     "@mudra-sanchay/i18n": "workspace:*",
     "@mudra-sanchay/shared": "workspace:*",
     "@mudra-sanchay/ui": "workspace:*",
+    "@supabase/supabase-js": "^2.112.3",
     "@tanstack/react-query": "^5.69.0",
     "i18next": "^24.2.3",
     "react": "^19.0.0",

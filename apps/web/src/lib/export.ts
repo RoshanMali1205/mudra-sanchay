@@ -1,5 +1,5 @@
 import { DEVELOPER_FOOTER, PRINT_BRAND, formatInrFromPaise } from "@mudra-sanchay/shared";
-import type { DashboardSummary, FarmerSummary, LedgerLine } from "@mudra-sanchay/shared";
+import type { DailySheet, DashboardSummary, FarmerSummary, LedgerLine } from "@mudra-sanchay/shared";
 import { buildPdfBlob, downloadPdf, type PdfDocument } from "./pdf";
 
 export function downloadExcel(filename: string, sheets: Array<{ name: string; rows: Array<Array<string | number>> }>) {
@@ -114,8 +114,14 @@ export function reportPdfDocument(
     outstanding: string;
     crates: string;
     trips: string;
-  }
+    farmers?: string;
+    daySheet?: string;
+    dues?: string;
+  },
+  dailySheet?: DailySheet
 ): PdfDocument {
+  const farmerCount = dailySheet?.farmerCount ?? summary?.farmerCount ?? 0;
+
   return {
     filename: "mudra-sanchay-report.pdf",
     title: PRINT_BRAND,
@@ -127,7 +133,7 @@ export function reportPdfDocument(
       `${labels.expenses}: ${formatInrFromPaise(summary?.expensesPaise ?? 0)}`,
       `${labels.profit}: ${formatInrFromPaise(summary?.accrualProfitPaise ?? 0)}`,
       `${labels.cash}: ${formatInrFromPaise(summary?.cashSurplusPaise ?? 0)}`,
-      `${labels.crates}: ${summary?.crates ?? 0} · ${labels.trips}: ${summary?.trips ?? 0}`,
+      `${labels.crates}: ${summary?.crates ?? dailySheet?.crates ?? 0} · ${labels.trips}: ${summary?.trips ?? dailySheet?.trips ?? 0}${labels.farmers ? ` · ${labels.farmers}: ${farmerCount}` : ""}`,
       generatedStamp()
     ],
     columns: [
@@ -140,7 +146,12 @@ export function reportPdfDocument(
       farmer.village,
       formatInrFromPaise(farmer.outstandingPaise)
     ]),
-    summary: [`${labels.outstanding}: ${formatInrFromPaise(summary?.outstandingPaise ?? 0)}`],
+    summary: [
+      ...(labels.daySheet && dailySheet
+        ? [`${labels.daySheet}: ${farmerCount} · ${dailySheet.crates} ${labels.crates}`]
+        : []),
+      `${labels.dues ?? labels.outstanding}: ${formatInrFromPaise(summary?.outstandingPaise ?? 0)}`
+    ],
     footer: DEVELOPER_FOOTER
   };
 }

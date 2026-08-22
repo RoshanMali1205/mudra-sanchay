@@ -8,7 +8,9 @@ import {
   type AuditLog,
   type Business,
   type CrateEntry,
+  type DailySheet,
   type DashboardSummary,
+  type DayFarmerRow,
   type Expense,
   type Farmer,
   type FarmerSummary,
@@ -84,7 +86,10 @@ export function loadStore(): void {
     store.vehicles = raw.vehicles ?? [];
     store.routes = raw.routes ?? [];
     store.farmers = raw.farmers ?? [];
-    store.trips = raw.trips ?? [];
+    store.trips = (raw.trips ?? []).map((trip) => ({
+      ...trip,
+      ...tripTotals(trip.entries ?? [])
+    }));
     store.payments = raw.payments ?? [];
     store.expenses = raw.expenses ?? [];
     store.receipts = raw.receipts ?? [];
@@ -196,10 +201,12 @@ export function farmerSummary(farmer: Farmer, from?: string, to?: string): Farme
 export function tripTotals(entries: CrateEntry[]): {
   totalCrates: number;
   totalFreightPaise: number;
+  farmerCount: number;
 } {
   return {
     totalCrates: entries.reduce((sum, entry) => sum + entry.crateCount, 0),
-    totalFreightPaise: entries.reduce((sum, entry) => sum + entry.freightAmountPaise, 0)
+    totalFreightPaise: entries.reduce((sum, entry) => sum + entry.freightAmountPaise, 0),
+    farmerCount: new Set(entries.map((e) => e.farmerId)).size
   };
 }
 
@@ -225,12 +232,52 @@ export function dashboardSummary(preset = "today", from?: string, to?: string): 
     to: range.to,
     crates,
     trips: trips.length,
+    farmerCount: new Set(trips.flatMap((trip) => trip.entries.map((entry) => entry.farmerId))).size,
     freightPaise,
     receivedPaise,
     expensesPaise,
     outstandingPaise,
     accrualProfitPaise: freightPaise - expensesPaise,
     cashSurplusPaise: receivedPaise - expensesPaise
+  };
+}
+
+export function dailySheet(preset = "today", from?: string, to?: string): DailySheet {
+  const range = resolveDateRange(preset, from, to);
+  const trips = store.trips.filter(
+    (trip) => trip.status !== "cancelled" && inRange(trip.tripDate, range.from, range.to)
+  );
+  const aggregated = new Map<string, { crates: number; freightPaise: number }>();
+  for (const entry of trips.flatMap((trip) => trip.entries)) {
+    const current = aggregated.get(entry.farmerId) ?? { crates: 0, freightPaise: 0 };
+    current.crates += entry.crateCount;
+    current.freightPaise += entry.freightAmountPaise;
+    aggregated.set(entry.farmerId, current);
+  }
+
+  const farmers: DayFarmerRow[] = [...aggregated.entries()]
+    .map(([farmerId, totals]) => {
+      const farmer = store.farmers.find((item) => item.id === farmerId);
+      return {
+        farmerId,
+        farmerCode: farmer?.farmerCode ?? "",
+        fullName: farmer?.fullName ?? "",
+        village: farmer?.village ?? "",
+        crates: totals.crates,
+        freightPaise: totals.freightPaise,
+        outstandingPaise: farmer ? farmerSummary(farmer).outstandingPaise : 0
+      };
+    })
+    .sort((a, b) => b.crates - a.crates || a.fullName.localeCompare(b.fullName));
+
+  return {
+    from: range.from,
+    to: range.to,
+    trips: trips.length,
+    crates: trips.reduce((sum, trip) => sum + trip.totalCrates, 0),
+    farmerCount: aggregated.size,
+    freightPaise: trips.reduce((sum, trip) => sum + trip.totalFreightPaise, 0),
+    farmers
   };
 }
 

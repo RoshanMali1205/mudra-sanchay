@@ -177,6 +177,16 @@
   margin: 0;
 }
 
+.due-amount {
+  color: var(--color-expense);
+  font-weight: 800;
+}
+
+.due-zero {
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
 .row-between {
   display: flex;
   justify-content: space-between;

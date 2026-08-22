@@ -2,7 +2,13 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { formatInrFromPaise, kolkataToday, resolveDateRange, type DashboardSummary } from "@mudra-sanchay/shared";
+import {
+  formatInrFromPaise,
+  kolkataToday,
+  resolveDateRange,
+  type DailySheet,
+  type DashboardSummary
+} from "@mudra-sanchay/shared";
 import { EmptyState, MetricCard } from "@mudra-sanchay/ui";
 import { api } from "../api";
 import { DateRangePicker } from "../components/UiBits";
@@ -18,6 +24,11 @@ export function DashboardPage() {
     queryKey: ["dashboard", range.label, range.from, range.to],
     queryFn: () =>
       api<DashboardSummary>(`/dashboard/summary?preset=${range.label}&from=${range.from}&to=${range.to}`)
+  });
+  const { data: sheet } = useQuery({
+    queryKey: ["daily-sheet", range.label, range.from, range.to],
+    queryFn: () =>
+      api<DailySheet>(`/reports/daily-sheet?preset=${range.label}&from=${range.from}&to=${range.to}`)
   });
 
   const money = (paise = 0) => formatInrFromPaise(paise, locale);
@@ -66,6 +77,7 @@ export function DashboardPage() {
         <MetricCard label={t("dashboard.netCash")} value={money(data?.cashSurplusPaise)} tone="accent" hint={t("dashboard.cashHint")} />
         <MetricCard label={t("dashboard.crates")} value={String(data?.crates ?? 0)} />
         <MetricCard label={t("dashboard.trips")} value={String(data?.trips ?? 0)} />
+        <MetricCard label={t("dashboard.farmersToday")} value={String(data?.farmerCount ?? sheet?.farmerCount ?? 0)} />
         <MetricCard label={t("dashboard.outstanding")} value={money(data?.outstandingPaise)} />
         <MetricCard
           label={t("dashboard.accrualProfit")}
@@ -73,6 +85,31 @@ export function DashboardPage() {
           hint={t("dashboard.accrualHint")}
         />
       </div>
+      {sheet?.farmers?.length ? (
+        <div style={{ marginTop: 16 }}>
+          <h2>{range.label === "today" ? t("dashboard.farmersToday") : t("dashboard.dayFarmers")}</h2>
+          {sheet.farmers.map((farmer) => (
+            <Link
+              key={farmer.farmerId}
+              to={`/farmers/${farmer.farmerId}`}
+              className="list-card ms-card"
+              style={{ marginTop: 12, display: "block" }}
+            >
+              <div className="row-between">
+                <strong>{farmer.fullName}</strong>
+                <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
+                  {money(farmer.outstandingPaise)}
+                </strong>
+              </div>
+              <p className="muted">
+                {farmer.village}
+                {` · ${farmer.crates} ${t("trip.crates")}`}
+                {` · ${money(farmer.freightPaise)}`}
+              </p>
+            </Link>
+          ))}
+        </div>
+      ) : null}
       <div className="quick-grid" style={{ marginTop: 16 }}>
         <Link className="action-card action-card-primary" to="/trips/new">
           {t("trip.new")}

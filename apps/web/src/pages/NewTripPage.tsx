@@ -203,7 +203,8 @@ export function NewTripPage() {
               <span>{t(`trip.${trip.status}`)}</span>
             </div>
             <p>
-              {t("trip.totals")}: {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
+              {t("trip.totals")}: {trip.farmerCount ?? new Set(trip.entries.map((entry) => entry.farmerId)).size}{" "}
+              {t("trip.farmersCount")} · {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
             </p>
             {trip.status === "draft" && previousTrip ? (
               <button className="ms-btn ms-btn-ghost" onClick={() => void copyFarmers()}>
@@ -264,11 +265,21 @@ export function NewTripPage() {
               </button>
             </form>
           ) : null}
-          {trip.entries.map((entry) => (
+          {trip.entries.map((entry) => {
+            const farmerDue = farmers.find((farmer) => farmer.id === entry.farmerId)?.outstandingPaise;
+            return (
             <article key={entry.id} className="list-card ms-card" style={{ marginTop: 12 }}>
               <strong>{entry.farmerName}</strong>
               <p className="muted">
                 {entry.crateCount || "—"} {t("trip.crates")} · {formatInrFromPaise(entry.freightAmountPaise)} · {entry.rateSource}
+                {farmerDue != null ? (
+                  <>
+                    {" · "}
+                    <span className={farmerDue > 0 ? "due-amount" : "due-zero"}>
+                      {t("farmer.outstandingBalance")}: {formatInrFromPaise(farmerDue)}
+                    </span>
+                  </>
+                ) : null}
               </p>
               {trip.status === "draft" ? (
                 <div className="row-between">
@@ -287,7 +298,8 @@ export function NewTripPage() {
                 </div>
               ) : null}
             </article>
-          ))}
+            );
+          })}
           {trip.status === "draft" ? (
             <button className="ms-btn ms-btn-accent" style={{ marginTop: 16 }} onClick={() => setConfirmComplete(true)}>
               {t("action.completeTrip")}

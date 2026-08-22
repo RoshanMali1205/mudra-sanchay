@@ -1,4 +1,6 @@
 export const APP_NAME = "Mudra Sanchay";
+export const APP_CODE = "mudra_sanchay";
+export const RECEIPT_BUCKET = "mudra-receipts";
 export const PRINT_BRAND = "Radhe Krishna Transport by Dnyaneshwar Jejurkar";
 export const DEVELOPER_FOOTER = "All Rights Reserved. Developed by Roshan Mali © 2026";
 export const DEFAULT_TIMEZONE = "Asia/Kolkata";

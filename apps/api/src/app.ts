@@ -26,6 +26,7 @@ import {
   addReceiptEvent,
   audit,
   createId,
+  dailySheet,
   dashboardSummary,
   farmerLedger,
   farmerSummary,
@@ -362,7 +363,8 @@ app.post("/trips", async (c) => {
     notes: parsed.data.notes,
     entries: [],
     totalCrates: 0,
-    totalFreightPaise: 0
+    totalFreightPaise: 0,
+    farmerCount: 0
   };
   store.trips.push(trip);
   return c.json({ data: trip }, 201);
@@ -723,11 +725,22 @@ app.get("/dashboard/summary", (c) => {
   });
 });
 
+app.get("/reports/daily-sheet", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  return c.json({
+    data: dailySheet(c.req.query("preset") ?? "today", c.req.query("from"), c.req.query("to"))
+  });
+});
+
 app.get("/reports/outstanding", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   return c.json({
-    data: store.farmers.filter((farmer) => farmer.active).map((farmer) => farmerSummary(farmer))
+    data: store.farmers
+      .filter((farmer) => farmer.active)
+      .map((farmer) => farmerSummary(farmer))
+      .sort((a, b) => b.outstandingPaise - a.outstandingPaise)
   });
 });
 
