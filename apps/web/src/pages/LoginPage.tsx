@@ -12,6 +12,7 @@ export function LoginPage() {
   const setToken = useSessionStore((state) => state.setToken);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,7 +55,16 @@ export function LoginPage() {
         </label>
         <label className="ms-field">
           <span className="ms-label">{t("auth.password")}</span>
-          <input name="password" type="password" autoComplete="current-password" minLength={8} required />
+          <input
+            name="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            minLength={8}
+            required
+          />
+          <button type="button" className="ms-btn ms-btn-ghost" onClick={() => setShowPassword((value) => !value)}>
+            {showPassword ? t("action.hidePassword") : t("action.showPassword")}
+          </button>
         </label>
         {error ? <p className="ms-error">{error}</p> : null}
         <button className="ms-btn ms-btn-primary" disabled={pending}>

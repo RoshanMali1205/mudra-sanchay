@@ -7,7 +7,8 @@ export function MorePage() {
     { to: "/expenses", label: t("more.expenses") },
     { to: "/receipts", label: t("more.receipts") },
     { to: "/payments/new", label: t("more.payments") },
-    { to: "/settings", label: t("more.settings") }
+    { to: "/settings", label: t("more.settings") },
+    { to: "/audit", label: t("more.audit") }
   ];
 
   return (

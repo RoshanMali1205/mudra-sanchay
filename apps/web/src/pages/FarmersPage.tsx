@@ -9,9 +9,13 @@ import { api } from "../api";
 export function FarmersPage() {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
+  const [archived, setArchived] = useState(false);
   const { data = [] } = useQuery({
-    queryKey: ["farmers", q],
-    queryFn: () => api<FarmerSummary[]>(`/farmers${q ? `?q=${encodeURIComponent(q)}` : ""}`)
+    queryKey: ["farmers", q, archived],
+    queryFn: () =>
+      api<FarmerSummary[]>(
+        `/farmers?archived=${archived ? "true" : "false"}${q ? `&q=${encodeURIComponent(q)}` : ""}`
+      )
   });
 
   return (
@@ -28,6 +32,10 @@ export function FarmersPage() {
         placeholder={t("farmer.searchPlaceholder")}
         aria-label={t("action.search")}
       />
+      <label className="row-between" style={{ marginTop: 8 }}>
+        <span>{t("farmer.archived")}</span>
+        <input type="checkbox" checked={archived} onChange={(event) => setArchived(event.target.checked)} />
+      </label>
       {data.length === 0 ? (
         <EmptyState title={t("nav.farmers")} body={t("farmer.empty")} />
       ) : (
@@ -40,6 +48,7 @@ export function FarmersPage() {
             <p className="muted">
               {farmer.village}
               {farmer.mobile ? ` · ${farmer.mobile}` : ""}
+              {farmer.active ? "" : ` · ${t("action.archive")}`}
             </p>
             <p>
               {t("farmer.outstandingBalance")}: {formatInrFromPaise(farmer.outstandingPaise)}

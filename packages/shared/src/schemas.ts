@@ -67,6 +67,13 @@ export const crateEntryCreateSchema = z.object({
   notes: z.string().max(240).optional()
 });
 
+export const crateEntryPatchSchema = z.object({
+  farmerId: uuidSchema.optional(),
+  crateCount: z.number().int().nonnegative().max(MAX_CRATE_COUNT).optional(),
+  ratePaise: z.number().int().nonnegative().optional(),
+  notes: z.string().max(240).optional()
+});
+
 export const paymentCreateSchema = z.object({
   farmerId: uuidSchema,
   paymentDate: z.string().date(),
@@ -86,6 +93,67 @@ export const expenseCreateSchema = z.object({
   vendorName: z.string().max(120).optional(),
   paymentMode: z.enum(PAYMENT_MODES).default("cash"),
   notes: z.string().max(240).optional()
+});
+
+export const paymentCreateSchemaExtended = paymentCreateSchema.extend({
+  confirmAdvance: z.boolean().optional()
+});
+
+export const paymentCorrectSchema = z.object({
+  amountPaise: moneyPaiseSchema,
+  reason: z.string().min(3).max(240)
+});
+
+export const tripReopenSchema = z.object({
+  reason: z.string().min(3).max(240)
+});
+
+export const copyFarmersSchema = z.object({
+  sourceTripId: uuidSchema,
+  farmerIds: z.array(uuidSchema).min(1)
+});
+
+export const receiptCreateSchema = z.object({
+  farmerId: uuidSchema.optional(),
+  tripId: uuidSchema.optional(),
+  receiptNumber: z.string().max(80).optional(),
+  receiptDate: z.string().date().optional(),
+  dueDate: z.string().date().optional(),
+  grossAmountPaise: z.number().int().nonnegative().optional(),
+  deductionAmountPaise: z.number().int().nonnegative().optional(),
+  netAmountPaise: z.number().int().nonnegative().optional(),
+  notes: z.string().max(500).optional(),
+  fileName: z.string().min(1),
+  mimeType: z.string().min(3),
+  previewDataUrl: z.string().min(20),
+  confirmOcr: z.boolean().optional()
+});
+
+export const receiptUpdateSchema = z.object({
+  farmerId: uuidSchema.optional(),
+  tripId: uuidSchema.optional(),
+  receiptNumber: z.string().max(80).optional(),
+  receiptDate: z.string().date().optional(),
+  dueDate: z.string().date().optional(),
+  grossAmountPaise: z.number().int().nonnegative().optional(),
+  deductionAmountPaise: z.number().int().nonnegative().optional(),
+  netAmountPaise: z.number().int().nonnegative().optional(),
+  reviewStatus: z.enum(["needs_review", "linked", "rejected", "archived"]).optional(),
+  notes: z.string().max(500).optional(),
+  rotation: z.number().int().optional()
+});
+
+export const receiptPaymentEventSchema = z.object({
+  eventDate: z.string().date(),
+  amountPaise: moneyPaiseSchema,
+  mode: z.enum(PAYMENT_MODES),
+  referenceNumber: z.string().max(80).optional(),
+  notes: z.string().max(240).optional(),
+  confirmOverpay: z.boolean().optional()
+});
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().email()
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

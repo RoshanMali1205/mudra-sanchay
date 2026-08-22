@@ -117,11 +117,13 @@ export type Trip = {
 export type Payment = {
   id: string;
   farmerId: string;
+  farmerName?: string;
   paymentDate: string;
   amountPaise: number;
   mode: PaymentMode;
   referenceNumber?: string;
   notes?: string;
+  correctionReason?: string;
 };
 
 export type Expense = {
@@ -130,11 +132,59 @@ export type Expense = {
   categoryCode: string;
   amountPaise: number;
   vendorName?: string;
+  vehicleId?: string;
+  tripId?: string;
+  paymentMode?: PaymentMode;
   notes?: string;
+};
+
+export type ReceiptPaymentEvent = {
+  id: string;
+  receiptId: string;
+  eventDate: string;
+  amountPaise: number;
+  mode: PaymentMode;
+  referenceNumber?: string;
+  notes?: string;
+};
+
+export type MarketReceipt = {
+  id: string;
+  farmerId?: string;
+  farmerName?: string;
+  tripId?: string;
+  receiptNumber?: string;
+  receiptDate?: string;
+  dueDate?: string;
+  grossAmountPaise: number;
+  deductionAmountPaise: number;
+  netAmountPaise: number;
+  paidAmountPaise: number;
+  paymentStatus: ReceiptPaymentStatus;
+  reviewStatus: "needs_review" | "linked" | "rejected" | "archived" | "uploaded";
+  fileName: string;
+  mimeType: string;
+  previewDataUrl: string;
+  rotation: number;
+  notes?: string;
+  events: ReceiptPaymentEvent[];
+};
+
+export type AuditLog = {
+  id: string;
+  actorName: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  beforeData?: Record<string, unknown>;
+  afterData?: Record<string, unknown>;
+  createdAt: string;
 };
 
 export type DashboardSummary = {
   rangeLabel: string;
+  from: string;
+  to: string;
   crates: number;
   trips: number;
   freightPaise: number;

@@ -25,15 +25,17 @@ export function TripsPage() {
       ) : (
         data.map((trip) => (
           <article key={trip.id} className="list-card ms-card" style={{ marginBottom: 12 }}>
-            <div className="row-between">
-              <strong>
-                {trip.tripDate} · {t("trip.number")} {trip.tripNumber}
-              </strong>
-              <StatusChip label={t(`trip.${trip.status}`)} tone={trip.status === "completed" ? "success" : "warning"} />
-            </div>
-            <p className="muted">
-              {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
-            </p>
+            <Link to={`/trips/${trip.id}`}>
+              <div className="row-between">
+                <strong>
+                  {trip.tripDate} · {t("trip.number")} {trip.tripNumber}
+                </strong>
+                <StatusChip label={t(`trip.${trip.status}`)} tone={trip.status === "completed" ? "success" : "warning"} />
+              </div>
+              <p className="muted">
+                {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
+              </p>
+            </Link>
           </article>
         ))
       )}

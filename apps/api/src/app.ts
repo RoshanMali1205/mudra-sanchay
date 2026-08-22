@@ -3,17 +3,28 @@ import { cors } from "hono/cors";
 import type { Context } from "hono";
 import {
   calculateFreightPaise,
+  copyFarmersSchema,
   crateEntryCreateSchema,
+  crateEntryPatchSchema,
+  expenseCreateSchema,
   farmerCreateSchema,
+  forgotPasswordSchema,
   loginSchema,
   onboardingSchema,
+  paymentCorrectSchema,
   paymentCreateSchema,
   PRINT_BRAND,
+  receiptCreateSchema,
+  receiptPaymentEventSchema,
+  receiptUpdateSchema,
   registerSchema,
   resolveFreightRate,
-  tripCreateSchema
+  tripCreateSchema,
+  tripReopenSchema
 } from "@mudra-sanchay/shared";
 import {
+  addReceiptEvent,
+  audit,
   createId,
   dashboardSummary,
   farmerLedger,
@@ -22,7 +33,7 @@ import {
   nextFarmerCode,
   nowIso,
   store,
-  todayKolkata,
+  syncReceiptStatus,
   toSessionUser,
   tripTotals
 } from "./store.js";
@@ -121,6 +132,33 @@ app.post("/auth/logout", (c) => {
   return c.json({ data: { ok: true } });
 });
 
+app.post("/auth/forgot-password", async (c) => {
+  const parsed = forgotPasswordSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return fail(c, 400, "VALIDATION", "Enter a valid email.");
+  }
+  const token = createId();
+  store.resetTokens.set(token, {
+    email: parsed.data.email.toLowerCase(),
+    expiresAt: Date.now() + 30 * 60 * 1000
+  });
+  return c.json({
+    data: {
+      ok: true,
+      message: "If that email exists, a time-limited recovery link was sent."
+    }
+  });
+});
+
+app.patch("/me/preferences", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const body = (await c.req.json()) as { preferredLanguage?: "en" | "hi" | "mr" };
+  const stored = store.users.find((item) => item.id === user.id);
+  if (stored && body.preferredLanguage) stored.preferredLanguage = body.preferredLanguage;
+  return c.json({ data: { user: stored ? toSessionUser(stored) : user } });
+});
+
 app.get("/me", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
@@ -165,6 +203,7 @@ app.post("/auth/bootstrap", async (c) => {
     active: true
   });
   store.ownerCreated = true;
+  audit(user.fullName, "bootstrap", "business", businessId, undefined, { name: parsed.data.businessName });
 
   const stored = store.users.find((item) => item.id === user.id)!;
   return c.json({ data: { user: toSessionUser(stored), business: store.businesses[0] } }, 201);
@@ -174,15 +213,16 @@ app.get("/farmers", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   const q = (c.req.query("q") ?? "").trim().toLowerCase();
+  const includeArchived = c.req.query("archived") === "true";
   const farmers = store.farmers
-    .filter((farmer) => farmer.active)
+    .filter((farmer) => includeArchived || farmer.active)
     .filter((farmer) => {
       if (!q) return true;
       return [farmer.fullName, farmer.village, farmer.mobile, farmer.farmerCode]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(q));
     })
-    .map(farmerSummary);
+    .map((farmer) => farmerSummary(farmer));
   return c.json({ data: farmers, meta: { count: farmers.length } });
 });
 
@@ -192,6 +232,21 @@ app.post("/farmers", async (c) => {
   const parsed = farmerCreateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Name and village are required.", parsed.error.flatten().fieldErrors);
+  }
+
+  const duplicate = store.farmers.find(
+    (item) =>
+      item.fullName.toLowerCase() === parsed.data.fullName.toLowerCase() ||
+      (parsed.data.mobile && item.mobile === parsed.data.mobile)
+  );
+
+  if (duplicate && c.req.header("x-confirm-duplicate") !== "true") {
+    return fail(
+      c,
+      409,
+      "POSSIBLE_DUPLICATE",
+      "A farmer with this name or mobile already exists. Confirm to save anyway."
+    );
   }
 
   const farmer = {
@@ -209,6 +264,7 @@ app.post("/farmers", async (c) => {
     createdAt: nowIso()
   };
   store.farmers.push(farmer);
+  audit(user.fullName, "create", "farmer", farmer.id, undefined, { fullName: farmer.fullName });
   return c.json({ data: farmerSummary(farmer) }, 201);
 });
 
@@ -217,12 +273,47 @@ app.get("/farmers/:id", (c) => {
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
   if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
+  const from = c.req.query("from");
+  const to = c.req.query("to");
   return c.json({
     data: {
-      farmer: farmerSummary(farmer),
-      ledger: farmerLedger(farmer.id)
+      farmer: farmerSummary(farmer, from, to),
+      ledger: farmerLedger(farmer.id, from, to)
     }
   });
+});
+
+app.patch("/farmers/:id", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
+  if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
+  const parsed = farmerCreateSchema.partial().safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "Check the highlighted fields.");
+  const before = { ...farmer };
+  Object.assign(farmer, parsed.data);
+  audit(user.fullName, "update", "farmer", farmer.id, before, farmer);
+  return c.json({ data: farmerSummary(farmer) });
+});
+
+app.delete("/farmers/:id", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
+  if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
+  farmer.active = false;
+  audit(user.fullName, "archive", "farmer", farmer.id, { active: true }, { active: false });
+  return c.json({ data: farmerSummary(farmer) });
+});
+
+app.post("/farmers/:id/restore", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
+  if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
+  farmer.active = true;
+  audit(user.fullName, "restore", "farmer", farmer.id, { active: false }, { active: true });
+  return c.json({ data: farmerSummary(farmer) });
 });
 
 app.get("/vehicles", (c) => {
@@ -321,6 +412,10 @@ app.post("/trips/:id/entries", async (c) => {
   };
   trip.entries.push(entry);
   Object.assign(trip, tripTotals(trip.entries));
+  audit(user.fullName, "create", "crate_entry", entry.id, undefined, {
+    crateCount: entry.crateCount,
+    freightAmountPaise
+  });
   return c.json({
     data: {
       ...entry,
@@ -329,22 +424,125 @@ app.post("/trips/:id/entries", async (c) => {
   }, 201);
 });
 
+app.patch("/trips/:id/entries/:entryId", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
+  if (trip.status !== "draft") return fail(c, 422, "TRIP_LOCKED", "Completed trips cannot take ordinary edits.");
+  const entry = trip.entries.find((item) => item.id === c.req.param("entryId"));
+  if (!entry) return fail(c, 404, "NOT_FOUND", "Entry was not found.");
+  const parsed = crateEntryPatchSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "Check crate count and rate.");
+  const before = { ...entry };
+  if (parsed.data.crateCount !== undefined) entry.crateCount = parsed.data.crateCount;
+  if (parsed.data.ratePaise !== undefined) {
+    entry.ratePaise = parsed.data.ratePaise;
+    entry.rateSource = "manual";
+  }
+  entry.freightAmountPaise =
+    entry.crateCount > 0 ? calculateFreightPaise(entry.crateCount, entry.ratePaise) : 0;
+  Object.assign(trip, tripTotals(trip.entries));
+  audit(user.fullName, "update", "crate_entry", entry.id, before, entry);
+  return c.json({ data: entry });
+});
+
+app.delete("/trips/:id/entries/:entryId", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
+  if (trip.status !== "draft") return fail(c, 422, "TRIP_LOCKED", "Completed trips cannot take ordinary edits.");
+  const entry = trip.entries.find((item) => item.id === c.req.param("entryId"));
+  if (!entry) return fail(c, 404, "NOT_FOUND", "Entry was not found.");
+  trip.entries = trip.entries.filter((item) => item.id !== entry.id);
+  Object.assign(trip, tripTotals(trip.entries));
+  audit(user.fullName, "delete", "crate_entry", entry.id, entry, undefined);
+  return c.json({ data: trip });
+});
+
+app.post("/trips/:id/copy-farmers", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
+  if (trip.status !== "draft") return fail(c, 422, "TRIP_LOCKED", "Completed trips cannot take ordinary edits.");
+  const parsed = copyFarmersSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "Select farmers from a previous trip.");
+  const source = store.trips.find((item) => item.id === parsed.data.sourceTripId);
+  if (!source) return fail(c, 404, "NOT_FOUND", "Source trip was not found.");
+  const business = store.businesses[0];
+  const route = store.routes.find((item) => item.id === trip.routeId);
+  for (const farmerId of parsed.data.farmerIds) {
+    if (trip.entries.some((entry) => entry.farmerId === farmerId)) continue;
+    const farmer = store.farmers.find((item) => item.id === farmerId && item.active);
+    if (!farmer) continue;
+    const resolved = resolveFreightRate({
+      routeRatePaise: route?.defaultRatePaise,
+      businessDefaultRatePaise: business?.defaultRatePaise
+    });
+    trip.entries.push({
+      id: createId(),
+      tripId: trip.id,
+      farmerId: farmer.id,
+      farmerName: farmer.fullName,
+      crateCount: 0,
+      ratePaise: resolved.ratePaise,
+      freightAmountPaise: 0,
+      rateSource: resolved.source,
+      notes: "Copied farmer — set crate count"
+    });
+  }
+  Object.assign(trip, tripTotals(trip.entries));
+  return c.json({ data: trip });
+});
+
 app.post("/trips/:id/complete", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   const trip = store.trips.find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
-  if (trip.entries.length === 0) {
-    return fail(c, 422, "EMPTY_TRIP", "Add at least one crate entry before completing.");
+  if (trip.entries.length === 0 || trip.entries.some((entry) => entry.crateCount <= 0)) {
+    return fail(c, 422, "EMPTY_TRIP", "Add at least one valid crate entry before completing.");
   }
+  const before = { status: trip.status };
   trip.status = "completed";
+  audit(user.fullName, "complete", "trip", trip.id, before, { status: "completed", totalFreightPaise: trip.totalFreightPaise });
   return c.json({ data: trip });
+});
+
+app.post("/trips/:id/reopen", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  if (user.role !== "admin") return fail(c, 403, "FORBIDDEN", "Only an admin can reopen a trip.");
+  const parsed = tripReopenSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "A reason is required to reopen.");
+  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
+  trip.status = "draft";
+  trip.notes = `${trip.notes ?? ""}\nReopened: ${parsed.data.reason}`.trim();
+  audit(user.fullName, "reopen", "trip", trip.id, { status: "completed" }, { status: "draft", reason: parsed.data.reason });
+  return c.json({ data: trip });
+});
+
+app.get("/payments", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const farmerId = c.req.query("farmerId");
+  const rows = store.payments
+    .filter((payment) => !farmerId || payment.farmerId === farmerId)
+    .map((payment) => ({
+      ...payment,
+      farmerName: store.farmers.find((farmer) => farmer.id === payment.farmerId)?.fullName
+    }));
+  return c.json({ data: rows });
 });
 
 app.post("/payments", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const parsed = paymentCreateSchema.safeParse(await c.req.json());
+  const body = await c.req.json();
+  const parsed = paymentCreateSchema.safeParse(body);
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Farmer, date, amount and mode are required.", parsed.error.flatten().fieldErrors);
   }
@@ -353,9 +551,16 @@ app.post("/payments", async (c) => {
     const existing = store.payments.find((payment) => payment.id === idempotencyKey)!;
     return c.json({ data: existing });
   }
+  const farmer = store.farmers.find((item) => item.id === parsed.data.farmerId);
+  if (!farmer) return fail(c, 422, "FARMER_MISSING", "Choose a farmer from this business.");
+  const summary = farmerSummary(farmer);
+  if (parsed.data.amountPaise > Math.max(summary.outstandingPaise, 0) && body.confirmAdvance !== true) {
+    return fail(c, 422, "ADVANCE_CONFIRM", "This payment is greater than the current balance. Confirm to record it as advance/credit.");
+  }
   const payment = {
     id: idempotencyKey ?? createId(),
     farmerId: parsed.data.farmerId,
+    farmerName: farmer.fullName,
     paymentDate: parsed.data.paymentDate,
     amountPaise: parsed.data.amountPaise,
     mode: parsed.data.mode,
@@ -363,13 +568,172 @@ app.post("/payments", async (c) => {
     notes: parsed.data.notes
   };
   store.payments.push(payment);
-  return c.json({ data: payment }, 201);
+  audit(user.fullName, "create", "payment", payment.id, undefined, payment);
+  return c.json({ data: { ...payment, outstandingPaise: farmerSummary(farmer).outstandingPaise } }, 201);
+});
+
+app.patch("/payments/:id", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const payment = store.payments.find((item) => item.id === c.req.param("id"));
+  if (!payment) return fail(c, 404, "NOT_FOUND", "Payment was not found.");
+  const parsed = paymentCorrectSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "Amount and a reason are required.");
+  const before = { amountPaise: payment.amountPaise };
+  payment.amountPaise = parsed.data.amountPaise;
+  payment.correctionReason = parsed.data.reason;
+  audit(user.fullName, "correct", "payment", payment.id, before, {
+    amountPaise: payment.amountPaise,
+    reason: parsed.data.reason
+  });
+  return c.json({ data: payment });
+});
+
+app.get("/expenses", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const category = c.req.query("category");
+  const vehicleId = c.req.query("vehicleId");
+  const from = c.req.query("from");
+  const to = c.req.query("to");
+  const rows = store.expenses.filter((expense) => {
+    if (category && expense.categoryCode !== category) return false;
+    if (vehicleId && expense.vehicleId !== vehicleId) return false;
+    if (from && to && (expense.expenseDate < from || expense.expenseDate > to)) return false;
+    return true;
+  });
+  const totals = rows.reduce<Record<string, number>>((acc, expense) => {
+    acc[expense.categoryCode] = (acc[expense.categoryCode] ?? 0) + expense.amountPaise;
+    return acc;
+  }, {});
+  return c.json({ data: rows, meta: { totals, totalPaise: rows.reduce((sum, item) => sum + item.amountPaise, 0) } });
+});
+
+app.post("/expenses", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const parsed = expenseCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) {
+    return fail(c, 400, "VALIDATION", "Date, category and a positive amount are required.", parsed.error.flatten().fieldErrors);
+  }
+  const expense = {
+    id: createId(),
+    expenseDate: parsed.data.expenseDate,
+    categoryCode: parsed.data.categoryCode,
+    amountPaise: parsed.data.amountPaise,
+    vendorName: parsed.data.vendorName,
+    vehicleId: parsed.data.vehicleId,
+    tripId: parsed.data.tripId,
+    paymentMode: parsed.data.paymentMode,
+    notes: parsed.data.notes
+  };
+  store.expenses.push(expense);
+  audit(user.fullName, "create", "expense", expense.id, undefined, expense);
+  return c.json({ data: expense }, 201);
+});
+
+app.get("/receipts", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  return c.json({ data: store.receipts });
+});
+
+app.post("/receipts", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const parsed = receiptCreateSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "Upload a JPEG, PNG or PDF receipt.");
+  const allowed = ["image/jpeg", "image/png", "application/pdf"];
+  if (!allowed.includes(parsed.data.mimeType)) {
+    return fail(c, 400, "FILE_TYPE", "Only JPEG, PNG or PDF files are allowed.");
+  }
+  const farmer = store.farmers.find((item) => item.id === parsed.data.farmerId);
+  const receipt = {
+    id: createId(),
+    farmerId: parsed.data.farmerId,
+    farmerName: farmer?.fullName,
+    tripId: parsed.data.tripId,
+    receiptNumber: parsed.data.receiptNumber,
+    receiptDate: parsed.data.receiptDate,
+    dueDate: parsed.data.dueDate,
+    grossAmountPaise: parsed.data.grossAmountPaise ?? 0,
+    deductionAmountPaise: parsed.data.deductionAmountPaise ?? 0,
+    netAmountPaise: parsed.data.netAmountPaise ?? 0,
+    paidAmountPaise: 0,
+    paymentStatus: "uploaded" as const,
+    reviewStatus: "uploaded" as const,
+    fileName: parsed.data.fileName,
+    mimeType: parsed.data.mimeType,
+    previewDataUrl: parsed.data.previewDataUrl,
+    rotation: 0,
+    notes: parsed.data.notes,
+    events: []
+  };
+  syncReceiptStatus(receipt);
+  store.receipts.push(receipt);
+  audit(user.fullName, "create", "receipt", receipt.id, undefined, { fileName: receipt.fileName });
+  return c.json({ data: receipt }, 201);
+});
+
+app.get("/receipts/:id", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const receipt = store.receipts.find((item) => item.id === c.req.param("id"));
+  if (!receipt) return fail(c, 404, "NOT_FOUND", "Receipt was not found.");
+  return c.json({ data: receipt });
+});
+
+app.patch("/receipts/:id", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const receipt = store.receipts.find((item) => item.id === c.req.param("id"));
+  if (!receipt) return fail(c, 404, "NOT_FOUND", "Receipt was not found.");
+  const parsed = receiptUpdateSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "Check receipt details.");
+  Object.assign(receipt, parsed.data);
+  if (parsed.data.farmerId) {
+    receipt.farmerName = store.farmers.find((item) => item.id === parsed.data.farmerId)?.fullName;
+  }
+  syncReceiptStatus(receipt);
+  return c.json({ data: receipt });
+});
+
+app.post("/receipts/:id/payment-events", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const receipt = store.receipts.find((item) => item.id === c.req.param("id"));
+  if (!receipt) return fail(c, 404, "NOT_FOUND", "Receipt was not found.");
+  const parsed = receiptPaymentEventSchema.safeParse(await c.req.json());
+  if (!parsed.success) return fail(c, 400, "VALIDATION", "Date, amount and mode are required.");
+  const nextPaid = receipt.paidAmountPaise + parsed.data.amountPaise;
+  if (receipt.netAmountPaise > 0 && nextPaid > receipt.netAmountPaise && !parsed.data.confirmOverpay) {
+    return fail(c, 422, "OVERPAY_CONFIRM", "This would overpay the receipt. Confirm and add a note.");
+  }
+  addReceiptEvent(receipt, parsed.data);
+  return c.json({ data: receipt }, 201);
 });
 
 app.get("/dashboard/summary", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  return c.json({ data: dashboardSummary(c.req.query("date") ?? todayKolkata()) });
+  return c.json({
+    data: dashboardSummary(c.req.query("preset") ?? "today", c.req.query("from"), c.req.query("to"))
+  });
+});
+
+app.get("/reports/outstanding", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  return c.json({
+    data: store.farmers.filter((farmer) => farmer.active).map((farmer) => farmerSummary(farmer))
+  });
+});
+
+app.get("/audit", (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  if (user.role !== "admin") return fail(c, 403, "FORBIDDEN", "Only an admin can view the audit trail.");
+  return c.json({ data: store.auditLogs });
 });
 
 app.notFound((c) => fail(c, 404, "NOT_FOUND", "This endpoint does not exist."));

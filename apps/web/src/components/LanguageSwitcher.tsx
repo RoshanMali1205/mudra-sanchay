@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import type { Language } from "@mudra-sanchay/shared";
 import { useSessionStore } from "../store";
+import { api } from "../api";
 
 const languages: Language[] = ["en", "hi", "mr"];
 
@@ -16,7 +17,13 @@ export function LanguageSwitcher() {
           key={code}
           type="button"
           className={language === code ? "active" : ""}
-          onClick={() => setLanguage(code)}
+          onClick={() => {
+            setLanguage(code);
+            void api("/me/preferences", {
+              method: "PATCH",
+              body: JSON.stringify({ preferredLanguage: code })
+            }).catch(() => undefined);
+          }}
         >
           {code.toUpperCase()}
         </button>

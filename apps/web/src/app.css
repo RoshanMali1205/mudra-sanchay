@@ -176,7 +176,92 @@
   gap: 10px;
 }
 
-@media (min-width: 1024px) {
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  min-height: var(--touch);
+  border: 1px solid var(--color-border);
+  background: white;
+  border-radius: 999px;
+  padding: 0 12px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip.active,
+.chip:has(input:checked) {
+  background: var(--color-primary);
+  color: white;
+  border-color: var(--color-primary);
+}
+
+.range-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  padding: 8px 6px;
+}
+
+.side-nav {
+  display: grid;
+  gap: 6px;
+}
+
+.side-nav a {
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.side-nav a.active {
+  background: #e8f3f2;
+  color: var(--color-primary-strong);
+}
+
+@media print {
+  .no-print,
+  .bottom-nav,
+  .topbar,
+  .desktop-sidebar,
+  .fab {
+    display: none !important;
+  }
+
+  .app-main {
+    padding: 0;
+    max-width: none;
+  }
+
+  .print-sheet {
+    box-shadow: none;
+    border: 0;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}
   .app-shell {
     display: grid;
     grid-template-columns: 260px 1fr;

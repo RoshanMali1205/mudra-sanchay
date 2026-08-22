@@ -1,18 +1,23 @@
 import { randomUUID } from "node:crypto";
-import type {
-  Business,
-  CrateEntry,
-  DashboardSummary,
-  Expense,
-  Farmer,
-  FarmerSummary,
-  Language,
-  LedgerLine,
-  Payment,
-  Route,
-  SessionUser,
-  Trip,
-  Vehicle
+import {
+  inRange,
+  resolveDateRange,
+  type AuditLog,
+  type Business,
+  type CrateEntry,
+  type DashboardSummary,
+  type Expense,
+  type Farmer,
+  type FarmerSummary,
+  type Language,
+  type LedgerLine,
+  type MarketReceipt,
+  type Payment,
+  type ReceiptPaymentEvent,
+  type Route,
+  type SessionUser,
+  type Trip,
+  type Vehicle
 } from "@mudra-sanchay/shared";
 
 export type StoredUser = {
@@ -26,6 +31,7 @@ export type StoredUser = {
 export type Store = {
   users: StoredUser[];
   sessions: Map<string, string>;
+  resetTokens: Map<string, { email: string; expiresAt: number }>;
   businesses: Business[];
   members: Array<{ userId: string; businessId: string; role: "admin" }>;
   vehicles: Vehicle[];
@@ -34,12 +40,15 @@ export type Store = {
   trips: Trip[];
   payments: Payment[];
   expenses: Expense[];
+  receipts: MarketReceipt[];
+  auditLogs: AuditLog[];
   ownerCreated: boolean;
 };
 
 export const store: Store = {
   users: [],
   sessions: new Map(),
+  resetTokens: new Map(),
   businesses: [],
   members: [],
   vehicles: [],
@@ -48,6 +57,8 @@ export const store: Store = {
   trips: [],
   payments: [],
   expenses: [],
+  receipts: [],
+  auditLogs: [],
   ownerCreated: false
 };
 
@@ -60,12 +71,27 @@ export function nowIso(): string {
 }
 
 export function todayKolkata(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).format(new Date());
+  return resolveDateRange("today").to;
+}
+
+export function audit(
+  actorName: string,
+  action: string,
+  entityType: string,
+  entityId: string,
+  beforeData?: Record<string, unknown>,
+  afterData?: Record<string, unknown>
+): void {
+  store.auditLogs.unshift({
+    id: createId(),
+    actorName,
+    action,
+    entityType,
+    entityId,
+    beforeData,
+    afterData,
+    createdAt: nowIso()
+  });
 }
 
 export function getUserByToken(token: string | undefined): StoredUser | undefined {
@@ -92,27 +118,31 @@ export function nextFarmerCode(): string {
   return `FRM-${String(next).padStart(4, "0")}`;
 }
 
-export function farmerSummary(farmer: Farmer): FarmerSummary {
-  const freightPaise = store.trips
-    .filter((trip) => trip.status !== "cancelled")
-    .flatMap((trip) => trip.entries)
-    .filter((entry) => entry.farmerId === farmer.id)
-    .reduce((sum, entry) => sum + entry.freightAmountPaise, 0);
+export function farmerSummary(farmer: Farmer, from?: string, to?: string): FarmerSummary {
+  const trips = store.trips.filter((trip) => trip.status !== "cancelled");
+  const entries = trips
+    .flatMap((trip) => trip.entries.map((entry) => ({ trip, entry })))
+    .filter(({ trip, entry }) => {
+      if (entry.farmerId !== farmer.id) return false;
+      if (from && to) return inRange(trip.tripDate, from, to);
+      return true;
+    });
+  const freightPaise = entries.reduce((sum, item) => sum + item.entry.freightAmountPaise, 0);
   const paidPaise = store.payments
-    .filter((payment) => payment.farmerId === farmer.id)
+    .filter((payment) => {
+      if (payment.farmerId !== farmer.id) return false;
+      if (from && to) return inRange(payment.paymentDate, from, to);
+      return true;
+    })
     .reduce((sum, payment) => sum + payment.amountPaise, 0);
-  const totalCrates = store.trips
-    .flatMap((trip) => trip.entries)
-    .filter((entry) => entry.farmerId === farmer.id)
-    .reduce((sum, entry) => sum + entry.crateCount, 0);
+  const totalCrates = entries.reduce((sum, item) => sum + item.entry.crateCount, 0);
 
   return {
     ...farmer,
     totalCrates,
     freightPaise,
     paidPaise,
-    outstandingPaise:
-      farmer.openingBalancePaise + freightPaise - paidPaise
+    outstandingPaise: farmer.openingBalancePaise + freightPaise - paidPaise
   };
 }
 
@@ -126,22 +156,26 @@ export function tripTotals(entries: CrateEntry[]): {
   };
 }
 
-export function dashboardSummary(rangeDate = todayKolkata()): DashboardSummary {
-  const trips = store.trips.filter((trip) => trip.tripDate === rangeDate);
+export function dashboardSummary(preset = "today", from?: string, to?: string): DashboardSummary {
+  const range = resolveDateRange(preset, from, to);
+  const trips = store.trips.filter((trip) => inRange(trip.tripDate, range.from, range.to));
   const crates = trips.reduce((sum, trip) => sum + trip.totalCrates, 0);
   const freightPaise = trips.reduce((sum, trip) => sum + trip.totalFreightPaise, 0);
   const receivedPaise = store.payments
-    .filter((payment) => payment.paymentDate === rangeDate)
+    .filter((payment) => inRange(payment.paymentDate, range.from, range.to))
     .reduce((sum, payment) => sum + payment.amountPaise, 0);
   const expensesPaise = store.expenses
-    .filter((expense) => expense.expenseDate === rangeDate)
+    .filter((expense) => inRange(expense.expenseDate, range.from, range.to))
     .reduce((sum, expense) => sum + expense.amountPaise, 0);
   const outstandingPaise = store.farmers
-    .map(farmerSummary)
+    .filter((farmer) => farmer.active)
+    .map((farmer) => farmerSummary(farmer))
     .reduce((sum, farmer) => sum + Math.max(farmer.outstandingPaise, 0), 0);
 
   return {
-    rangeLabel: "today",
+    rangeLabel: range.label,
+    from: range.from,
+    to: range.to,
     crates,
     trips: trips.length,
     freightPaise,
@@ -153,7 +187,7 @@ export function dashboardSummary(rangeDate = todayKolkata()): DashboardSummary {
   };
 }
 
-export function farmerLedger(farmerId: string): LedgerLine[] {
+export function farmerLedger(farmerId: string, from?: string, to?: string): LedgerLine[] {
   const farmer = store.farmers.find((item) => item.id === farmerId);
   if (!farmer) return [];
 
@@ -161,11 +195,15 @@ export function farmerLedger(farmerId: string): LedgerLine[] {
 
   for (const trip of store.trips) {
     for (const entry of trip.entries.filter((item) => item.farmerId === farmerId)) {
+      if (from && to && !inRange(trip.tripDate, from, to)) continue;
+      const remaining = remainingOnCharge(entry.id);
+      const paidLabel =
+        remaining <= 0 ? "Paid" : remaining < entry.freightAmountPaise ? "Partially paid" : "Unpaid";
       lines.push({
         id: entry.id,
         date: trip.tripDate,
         type: "freight",
-        description: `Trip ${trip.tripNumber} · ${entry.crateCount} crates`,
+        description: `Trip ${trip.tripNumber} · ${entry.crateCount} crates · ${paidLabel}`,
         crates: entry.crateCount,
         debitPaise: entry.freightAmountPaise,
         creditPaise: 0
@@ -174,11 +212,12 @@ export function farmerLedger(farmerId: string): LedgerLine[] {
   }
 
   for (const payment of store.payments.filter((item) => item.farmerId === farmerId)) {
+    if (from && to && !inRange(payment.paymentDate, from, to)) continue;
     lines.push({
       id: payment.id,
       date: payment.paymentDate,
       type: "payment",
-      description: `Payment · ${payment.mode}`,
+      description: `Payment · ${payment.mode}${payment.correctionReason ? " · corrected" : ""}`,
       debitPaise: 0,
       creditPaise: payment.amountPaise
     });
@@ -190,4 +229,58 @@ export function farmerLedger(farmerId: string): LedgerLine[] {
     running += line.debitPaise - line.creditPaise;
     return { ...line, runningBalancePaise: running };
   });
+}
+
+function remainingOnCharge(entryId: string): number {
+  const entry = store.trips.flatMap((trip) => trip.entries).find((item) => item.id === entryId);
+  if (!entry) return 0;
+  const paid = store.payments
+    .filter((payment) => payment.farmerId === entry.farmerId)
+    .reduce((sum, payment) => sum + payment.amountPaise, 0);
+  const charges = store.trips
+    .flatMap((trip) => trip.entries)
+    .filter((item) => item.farmerId === entry.farmerId)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  let remainingPayment = paid;
+  for (const charge of charges) {
+    const applied = Math.min(charge.freightAmountPaise, remainingPayment);
+    remainingPayment -= applied;
+    if (charge.id === entryId) return charge.freightAmountPaise - applied;
+  }
+  return entry.freightAmountPaise;
+}
+
+export function syncReceiptStatus(receipt: MarketReceipt): void {
+  if (receipt.farmerId) {
+    receipt.reviewStatus = receipt.reviewStatus === "uploaded" ? "linked" : receipt.reviewStatus;
+  }
+  const net = receipt.netAmountPaise;
+  if (net > 0 && receipt.paidAmountPaise >= net) {
+    receipt.paymentStatus = "paid";
+  } else if (receipt.paidAmountPaise > 0) {
+    receipt.paymentStatus = "partially_paid";
+  } else if (receipt.farmerId) {
+    receipt.paymentStatus = "awaiting_payment";
+  } else {
+    receipt.paymentStatus = "uploaded";
+  }
+}
+
+export function addReceiptEvent(
+  receipt: MarketReceipt,
+  event: Omit<ReceiptPaymentEvent, "id" | "receiptId"> & { id?: string }
+): ReceiptPaymentEvent {
+  const saved: ReceiptPaymentEvent = {
+    id: event.id ?? createId(),
+    receiptId: receipt.id,
+    eventDate: event.eventDate,
+    amountPaise: event.amountPaise,
+    mode: event.mode,
+    referenceNumber: event.referenceNumber,
+    notes: event.notes
+  };
+  receipt.events.push(saved);
+  receipt.paidAmountPaise = receipt.events.reduce((sum, item) => sum + item.amountPaise, 0);
+  syncReceiptStatus(receipt);
+  return saved;
 }

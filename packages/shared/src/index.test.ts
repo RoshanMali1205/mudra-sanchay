@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  calculateFreightPaise,
-  farmerClosingBalancePaise,
-  formatInrFromPaise,
-  periodProfit,
-  resolveFreightRate,
-  rupeesToPaise
-} from "./index.js";
+import { calculateFreightPaise, farmerClosingBalancePaise, formatInrFromPaise, periodProfit, resolveDateRange, resolveFreightRate, rupeesToPaise } from "./index.js";
 
 describe("freight calculation", () => {
   it("charges 50 crates at INR 25 as INR 1,250", () => {
@@ -60,5 +53,13 @@ describe("balances and profit", () => {
       accrualProfitPaise: 85000,
       cashSurplusPaise: 60000
     });
+  });
+});
+
+describe("date presets", () => {
+  it("resolves a week range ending today", () => {
+    const range = resolveDateRange("week");
+    expect(range.to >= range.from).toBe(true);
+    expect(range.label).toBe("week");
   });
 });
