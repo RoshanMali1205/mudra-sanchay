@@ -1,0 +1,21 @@
+{
+  "name": "mudra-sanchay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile-first transport income, expense and farmer account management for Radhe Krishna Transport.",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @mudra-sanchay/api --filter @mudra-sanchay/web dev",
+    "build": "pnpm --filter @mudra-sanchay/shared build && pnpm --filter @mudra-sanchay/i18n build && pnpm --filter @mudra-sanchay/ui build && pnpm --filter @mudra-sanchay/api build && pnpm --filter @mudra-sanchay/web build",
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "preview": "pnpm --filter @mudra-sanchay/web preview"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

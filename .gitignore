@@ -1,0 +1,38 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build
+dist
+build
+coverage
+*.tsbuildinfo
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Netlify
+.netlify
+
+# Editors and OS
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+*.log
+npm-debug.log*
+
+# Test and cache
+.vite
+.turbo
+.cache
+playwright-report
+test-results
+
+# Supabase local
+supabase/.temp
+supabase/.branches

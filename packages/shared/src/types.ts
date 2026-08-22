@@ -1,0 +1,157 @@
+import type {
+  EXPENSE_CATEGORY_CODES,
+  MEMBER_ROLES,
+  PAYMENT_MODES,
+  RATE_SOURCES,
+  RECEIPT_PAYMENT_STATUSES,
+  SUPPORTED_LANGUAGES,
+  TRIP_STATUSES
+} from "./constants.js";
+
+export type Language = (typeof SUPPORTED_LANGUAGES)[number];
+export type MemberRole = (typeof MEMBER_ROLES)[number];
+export type TripStatus = (typeof TRIP_STATUSES)[number];
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+export type RateSource = (typeof RATE_SOURCES)[number];
+export type ExpenseCategoryCode = (typeof EXPENSE_CATEGORY_CODES)[number];
+export type ReceiptPaymentStatus = (typeof RECEIPT_PAYMENT_STATUSES)[number];
+
+export type ApiErrorBody = {
+  error: {
+    code: string;
+    message: string;
+    fieldErrors?: Record<string, string[]>;
+    requestId: string;
+  };
+};
+
+export type ApiSuccess<T> = {
+  data: T;
+  meta?: Record<string, unknown>;
+};
+
+export type SessionUser = {
+  id: string;
+  email: string;
+  fullName: string;
+  preferredLanguage: Language;
+  role: MemberRole | null;
+  businessId: string | null;
+  onboarded: boolean;
+};
+
+export type Business = {
+  id: string;
+  name: string;
+  printName: string;
+  ownerName: string;
+  phone?: string;
+  defaultLanguage: Language;
+  timezone: string;
+  currency: string;
+  defaultRatePaise: number;
+};
+
+export type Farmer = {
+  id: string;
+  farmerCode: string;
+  fullName: string;
+  village: string;
+  mobile?: string;
+  alternateMobile?: string;
+  address?: string;
+  preferredLanguage?: Language;
+  openingBalancePaise: number;
+  active: boolean;
+  notes?: string;
+  createdAt: string;
+};
+
+export type FarmerSummary = Farmer & {
+  totalCrates: number;
+  freightPaise: number;
+  paidPaise: number;
+  outstandingPaise: number;
+};
+
+export type Vehicle = {
+  id: string;
+  registrationNumber: string;
+  displayName: string;
+  active: boolean;
+};
+
+export type Route = {
+  id: string;
+  originName: string;
+  destinationName: string;
+  defaultRatePaise: number;
+  active: boolean;
+};
+
+export type CrateEntry = {
+  id: string;
+  tripId: string;
+  farmerId: string;
+  farmerName: string;
+  crateCount: number;
+  ratePaise: number;
+  freightAmountPaise: number;
+  rateSource: RateSource;
+  notes?: string;
+};
+
+export type Trip = {
+  id: string;
+  tripDate: string;
+  tripNumber: number;
+  vehicleId: string;
+  routeId: string;
+  status: TripStatus;
+  notes?: string;
+  entries: CrateEntry[];
+  totalCrates: number;
+  totalFreightPaise: number;
+};
+
+export type Payment = {
+  id: string;
+  farmerId: string;
+  paymentDate: string;
+  amountPaise: number;
+  mode: PaymentMode;
+  referenceNumber?: string;
+  notes?: string;
+};
+
+export type Expense = {
+  id: string;
+  expenseDate: string;
+  categoryCode: string;
+  amountPaise: number;
+  vendorName?: string;
+  notes?: string;
+};
+
+export type DashboardSummary = {
+  rangeLabel: string;
+  crates: number;
+  trips: number;
+  freightPaise: number;
+  receivedPaise: number;
+  expensesPaise: number;
+  outstandingPaise: number;
+  accrualProfitPaise: number;
+  cashSurplusPaise: number;
+};
+
+export type LedgerLine = {
+  id: string;
+  date: string;
+  type: "freight" | "payment" | "adjustment";
+  description: string;
+  crates?: number;
+  debitPaise: number;
+  creditPaise: number;
+  runningBalancePaise: number;
+};
