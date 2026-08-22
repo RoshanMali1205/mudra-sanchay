@@ -20,7 +20,7 @@ apps/api/.data
 # Netlify
 .netlify
 netlify/functions/api.cjs
-netlify/functions/api.js
+netlify/functions/api-bundle.cjs
 
 # Editors and OS
 .DS_Store

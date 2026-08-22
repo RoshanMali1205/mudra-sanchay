@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const outfile = resolve(root, "netlify/functions/api.cjs");
+const outfile = resolve(root, "netlify/functions/api-bundle.cjs");
 
 mkdirSync(dirname(outfile), { recursive: true });
 

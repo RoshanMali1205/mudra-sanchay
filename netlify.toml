@@ -12,6 +12,7 @@
 
 [functions.api]
   timeout = 26
+  included_files = ["netlify/functions/api-bundle.cjs"]
 
 [[redirects]]
   from = "/api/*"
