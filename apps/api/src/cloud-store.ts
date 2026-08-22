@@ -1,5 +1,5 @@
 import type { SessionUser } from "@mudra-sanchay/shared";
-import { APP_CODE, supabaseAdmin, isSupabaseEnabled } from "./supabase.js";
+import { APP_CODE, createSupabaseAuthClient, supabaseAdmin, isSupabaseEnabled } from "./supabase.js";
 import { store, tripTotals, type StoredUser } from "./store.js";
 
 function assertOk<T extends { error: { message: string } | null }>(result: T, action: string): T {
@@ -427,7 +427,8 @@ export async function ensureMudraAccess(userId: string, fullName?: string) {
 
 export async function registerWithSupabase(input: { email: string; password: string; fullName: string }) {
   const db = supabaseAdmin();
-  if (!db) throw new Error("Supabase is not configured");
+  const auth = createSupabaseAuthClient();
+  if (!db || !auth) throw new Error("Supabase is not configured");
   const { data, error } = await db.auth.admin.createUser({
     email: input.email,
     password: input.password,
@@ -444,7 +445,8 @@ export async function registerWithSupabase(input: { email: string; password: str
   if (error && !alreadyExists) throw new Error(error.message);
   if (!alreadyExists && !data.user) throw new Error("Could not create the account.");
 
-  const { data: session, error: signInError } = await db.auth.signInWithPassword({
+  // Sign in on a throwaway client so the admin singleton keeps the service role (RLS bypass).
+  const { data: session, error: signInError } = await auth.auth.signInWithPassword({
     email: input.email,
     password: input.password
   });
@@ -470,9 +472,10 @@ export async function updateProfileLanguage(userId: string, preferredLanguage: "
 }
 
 export async function loginWithSupabase(input: { email: string; password: string }) {
-  const db = supabaseAdmin();
-  if (!db) throw new Error("Supabase is not configured");
-  const { data, error } = await db.auth.signInWithPassword(input);
+  const auth = createSupabaseAuthClient();
+  if (!auth) throw new Error("Supabase is not configured");
+  // Sign in on a throwaway client so the admin singleton keeps the service role (RLS bypass).
+  const { data, error } = await auth.auth.signInWithPassword(input);
   if (error || !data.session || !data.user) throw new Error("Email or password is incorrect.");
   const fullName = (data.user.user_metadata.full_name as string | undefined) ?? data.user.email ?? "User";
   await ensureMudraAccess(data.user.id, fullName);
