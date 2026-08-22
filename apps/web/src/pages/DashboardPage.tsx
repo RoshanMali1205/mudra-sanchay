@@ -25,7 +25,17 @@ export function DashboardPage() {
   return (
     <section>
       <header className="page-header">
-        <h1>{t("dashboard.today")}</h1>
+        <figure className="hero-scene">
+          <img src="/images/farm-fields.png" alt="Tomato farm in Ugaon" />
+          <figcaption>
+            <h1>{t("dashboard.today")}</h1>
+            <p>{t("app.brand")}</p>
+          </figcaption>
+        </figure>
+        <div className="photo-strip" aria-hidden="false">
+          <img src="/images/tomato-crates.png" alt="Tomato crates" />
+          <img src="/images/tomato-crate-square.png" alt="Fresh tomatoes" />
+        </div>
         <DateRangePicker
           preset={preset}
           onPreset={(value) => {
@@ -64,22 +74,27 @@ export function DashboardPage() {
         />
       </div>
       <div className="quick-grid" style={{ marginTop: 16 }}>
-        <Link className="ms-btn ms-btn-primary" to="/trips/new" style={{ display: "grid", placeItems: "center" }}>
+        <Link className="action-card action-card-primary" to="/trips/new">
           {t("trip.new")}
         </Link>
-        <Link className="ms-btn ms-btn-primary" to="/farmers/new" style={{ display: "grid", placeItems: "center" }}>
+        <Link className="action-card action-card-primary" to="/farmers/new">
           {t("farmer.new")}
         </Link>
-        <Link className="ms-btn ms-btn-accent" to="/payments/new" style={{ display: "grid", placeItems: "center" }}>
+        <Link className="action-card action-card-accent" to="/payments/new">
           {t("payment.new")}
         </Link>
-        <Link className="ms-btn ms-btn-accent" to="/expenses/new" style={{ display: "grid", placeItems: "center" }}>
+        <Link className="action-card action-card-accent" to="/expenses/new">
           {t("expense.new")}
         </Link>
       </div>
       {data && data.trips === 0 ? (
         <div style={{ marginTop: 16 }}>
-          <EmptyState title={t("dashboard.today")} body={t("dashboard.empty")} />
+          <EmptyState
+            title={t("dashboard.today")}
+            body={t("dashboard.empty")}
+            imageSrc="/images/tomato-crates.png"
+            imageAlt="Tomato crates"
+          />
         </div>
       ) : null}
     </section>

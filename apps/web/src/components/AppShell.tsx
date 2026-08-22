@@ -1,11 +1,11 @@
 import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMe } from "../hooks";
-import { api } from "../api";
+import { api, ApiError } from "../api";
 import { useSessionStore } from "../store";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { QuickEntrySheet } from "./QuickEntrySheet";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const navItems = [
   { to: "/dashboard", key: "nav.home" },
@@ -18,13 +18,52 @@ const navItems = [
 export function AppShell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { data, isLoading } = useMe();
+  const token = useSessionStore((state) => state.token);
   const setToken = useSessionStore((state) => state.setToken);
+  const { data, isError, error, isSuccess, refetch, isFetching } = useMe();
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (isError && error instanceof ApiError && error.status === 401) {
+      setToken(null);
+    }
+  }, [isError, error, setToken]);
+
+  if (!token) {
+    return <Navigate to="/auth/login" replace />;
+  }
+
+  if (isError) {
+    const apiError = error instanceof ApiError ? error : undefined;
+    if (apiError?.status === 401) {
+      return <Navigate to="/auth/login" replace />;
+    }
+    return (
+      <div className="auth-layout">
+        <div className="auth-card ms-card">
+          <h1>{t("app.name")}</h1>
+          <p className="ms-error">{apiError?.message ?? t("status.error")}</p>
+          <button className="ms-btn ms-btn-primary" onClick={() => void refetch()}>
+            {t("action.retry")}
+          </button>
+          <button
+            className="ms-btn ms-btn-ghost"
+            onClick={() => {
+              setToken(null);
+              navigate("/auth/login");
+            }}
+          >
+            {t("action.login")}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isSuccess || (isFetching && !data?.user)) {
     return <div className="auth-layout">Loading…</div>;
   }
+
   if (!data?.user) {
     return <Navigate to="/auth/login" replace />;
   }

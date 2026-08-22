@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   inRange,
   resolveDateRange,
@@ -61,6 +64,50 @@ export const store: Store = {
   auditLogs: [],
   ownerCreated: false
 };
+
+const dataFile = join(dirname(fileURLToPath(import.meta.url)), "..", ".data", "local-store.json");
+
+type PersistedStore = Omit<Store, "sessions" | "resetTokens"> & {
+  sessions: Array<[string, string]>;
+  resetTokens: Array<[string, { email: string; expiresAt: number }]>;
+};
+
+export function loadStore(): void {
+  try {
+    if (!existsSync(dataFile)) return;
+    const raw = JSON.parse(readFileSync(dataFile, "utf8")) as PersistedStore;
+    store.users = raw.users ?? [];
+    store.sessions = new Map(raw.sessions ?? []);
+    store.resetTokens = new Map(raw.resetTokens ?? []);
+    store.businesses = raw.businesses ?? [];
+    store.members = raw.members ?? [];
+    store.vehicles = raw.vehicles ?? [];
+    store.routes = raw.routes ?? [];
+    store.farmers = raw.farmers ?? [];
+    store.trips = raw.trips ?? [];
+    store.payments = raw.payments ?? [];
+    store.expenses = raw.expenses ?? [];
+    store.receipts = raw.receipts ?? [];
+    store.auditLogs = raw.auditLogs ?? [];
+    store.ownerCreated = Boolean(raw.ownerCreated);
+  } catch (error) {
+    console.warn("Could not load local demo data", error);
+  }
+}
+
+export function persistStore(): void {
+  try {
+    mkdirSync(dirname(dataFile), { recursive: true });
+    const payload: PersistedStore = {
+      ...store,
+      sessions: [...store.sessions.entries()],
+      resetTokens: [...store.resetTokens.entries()]
+    };
+    writeFileSync(dataFile, JSON.stringify(payload));
+  } catch (error) {
+    console.warn("Could not save local demo data", error);
+  }
+}
 
 export function createId(): string {
   return randomUUID();

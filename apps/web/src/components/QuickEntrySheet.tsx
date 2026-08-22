@@ -16,10 +16,10 @@ export function QuickEntrySheet({ onClose }: { onClose: () => void }) {
     <div className="sheet-backdrop" onClick={onClose} role="presentation">
       <div className="sheet" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
         <h2>{t("dashboard.quickActions")}</h2>
-        {actions.map((action) => (
+        {actions.map((action, index) => (
           <button
             key={action.to}
-            className="ms-btn ms-btn-primary"
+            className={index === 0 ? "ms-btn ms-btn-primary" : "ms-btn ms-btn-ghost"}
             onClick={() => {
               onClose();
               navigate(action.to);

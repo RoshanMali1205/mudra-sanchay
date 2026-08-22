@@ -13,7 +13,7 @@ import {
 } from "@mudra-sanchay/shared";
 import { api } from "../api";
 import { DateRangePicker } from "../components/UiBits";
-import { downloadExcel, shareWhatsApp, statementRows } from "../lib/export";
+import { downloadExcel, exportStatementPdf, shareStatementPdf, statementRows } from "../lib/export";
 
 export function FarmerStatementPage() {
   const { t, i18n } = useTranslation();
@@ -34,9 +34,20 @@ export function FarmerStatementPage() {
       )
   });
 
+  const [busy, setBusy] = useState<"pdf" | "share" | null>(null);
+
   if (!data) return <p>Loading…</p>;
   const { farmer, ledger } = data;
   const message = `Namaskar ${farmer.fullName}, ${range.from} to ${range.to} cha Radhe Krishna Transport statement sobat pathavla aahe. Baki rakkam: ${formatInrFromPaise(farmer.outstandingPaise)}.`;
+  const pdfLabels = {
+    date: t("trip.date"),
+    details: t("nav.trips"),
+    crates: t("trip.crates"),
+    amount: t("payment.amount"),
+    balance: t("payment.balance"),
+    outstanding: t("farmer.outstandingBalance"),
+    language: i18n.language
+  };
 
   function exportExcel() {
     const sheets = statementRows(farmer, ledger, range.from, range.to);
@@ -44,6 +55,24 @@ export function FarmerStatementPage() {
       { name: "Summary", rows: sheets.summary },
       { name: "Details", rows: sheets.details }
     ]);
+  }
+
+  async function exportPdf() {
+    setBusy("pdf");
+    try {
+      await exportStatementPdf(farmer, ledger, range.from, range.to, pdfLabels);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function sharePdf() {
+    setBusy("share");
+    try {
+      await shareStatementPdf(farmer, ledger, range.from, range.to, pdfLabels, message, t("farmer.statement"));
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
@@ -73,17 +102,17 @@ export function FarmerStatementPage() {
           }}
         />
         <div className="chip-row">
-          <button className="ms-btn ms-btn-primary" onClick={() => window.print()}>
+          <button className="ms-btn ms-btn-primary" disabled={busy !== null} onClick={() => void exportPdf()}>
+            {busy === "pdf" ? t("status.saving") : t("action.pdf")}
+          </button>
+          <button className="ms-btn ms-btn-ghost" onClick={() => window.print()}>
             {t("action.print")}
           </button>
           <button className="ms-btn ms-btn-accent" onClick={exportExcel}>
             {t("action.excel")}
           </button>
-          <button
-            className="ms-btn ms-btn-ghost"
-            onClick={() => void shareWhatsApp(farmer.mobile, message, t("farmer.statement"))}
-          >
-            {t("action.whatsapp")}
+          <button className="ms-btn ms-btn-ghost" disabled={busy !== null} onClick={() => void sharePdf()}>
+            {busy === "share" ? t("status.saving") : t("action.whatsapp")}
           </button>
         </div>
       </header>

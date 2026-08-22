@@ -22,15 +22,35 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!headers.has("content-type") && init.body) headers.set("content-type", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);
 
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
-  const json = (await response.json().catch(() => ({}))) as { data?: T } & ApiErrorBody;
-
-  if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      json.error?.message ?? "Request failed",
-      json.error
-    );
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 8000);
+  if (init.signal) {
+    init.signal.addEventListener("abort", () => controller.abort());
   }
-  return json.data as T;
+
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal
+    });
+    const json = (await response.json().catch(() => ({}))) as { data?: T } & ApiErrorBody;
+
+    if (!response.ok) {
+      throw new ApiError(
+        response.status,
+        json.error?.message ?? "Request failed",
+        json.error
+      );
+    }
+    return json.data as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(
+      503,
+      "Cannot reach the API. In the project folder run pnpm dev so both the web app and API start."
+    );
+  } finally {
+    window.clearTimeout(timer);
+  }
 }

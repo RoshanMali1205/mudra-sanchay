@@ -68,7 +68,7 @@ export default function App() {
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/more" element={<MorePage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/auth/login" replace />} />
     </Routes>
   );
 }

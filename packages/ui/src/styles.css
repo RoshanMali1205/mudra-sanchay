@@ -1,19 +1,52 @@
 .metric-card {
-  padding: 16px;
-  min-height: 108px;
+  padding: 16px 16px 18px;
+  min-height: 116px;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.metric-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--color-primary);
+}
+
+.metric-income::before {
+  background: var(--color-income);
+}
+
+.metric-expense::before {
+  background: var(--color-expense);
+}
+
+.metric-accent::before {
+  background: var(--color-accent);
 }
 
 .metric-label,
 .metric-hint {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.9rem;
+  font-size: 0.86rem;
+  font-weight: 600;
 }
 
 .metric-value {
-  margin: 8px 0 0;
-  font-size: 1.35rem;
+  margin: 10px 0 0;
+  font-size: 1.4rem;
   font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.metric-hint {
+  margin-top: 8px;
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .metric-income .metric-value {
@@ -62,8 +95,28 @@
 
 .empty-state h2 {
   margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.empty-photo {
+  width: 132px;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 20px;
+  margin: 0 auto 14px;
+  display: block;
+  box-shadow: var(--shadow-card);
 }
 
 .empty-state p {
   color: var(--color-muted);
+}
+
+.empty-photo {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 18px;
+  margin: 0 auto 12px;
+  display: block;
 }

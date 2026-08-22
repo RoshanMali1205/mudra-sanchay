@@ -37,7 +37,12 @@ export function FarmersPage() {
         <input type="checkbox" checked={archived} onChange={(event) => setArchived(event.target.checked)} />
       </label>
       {data.length === 0 ? (
-        <EmptyState title={t("nav.farmers")} body={t("farmer.empty")} />
+        <EmptyState
+          title={t("nav.farmers")}
+          body={t("farmer.empty")}
+          imageSrc="/images/farm-fields.png"
+          imageAlt="Farm fields"
+        />
       ) : (
         data.map((farmer) => (
           <Link key={farmer.id} to={`/farmers/${farmer.id}`} className="list-card ms-card" style={{ marginTop: 12, display: "block" }}>

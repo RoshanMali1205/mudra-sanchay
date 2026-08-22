@@ -46,6 +46,7 @@ export function LoginPage() {
             <small>{t("app.brand")}</small>
           </div>
         </div>
+        <img className="scene-photo" src="/images/tomato-crates.png" alt="Tomato crates ready for market" />
         <LanguageSwitcher />
         <h1>{t("auth.loginTitle")}</h1>
         <p className="muted">{t("auth.loginSubtitle")}</p>

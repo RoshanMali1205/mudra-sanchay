@@ -21,7 +21,12 @@ export function TripsPage() {
         </Link>
       </header>
       {data.length === 0 ? (
-        <EmptyState title={t("nav.trips")} body={t("dashboard.empty")} />
+        <EmptyState
+          title={t("nav.trips")}
+          body={t("dashboard.empty")}
+          imageSrc="/images/tomato-crate-square.png"
+          imageAlt="Tomato crate"
+        />
       ) : (
         data.map((trip) => (
           <article key={trip.id} className="list-card ms-card" style={{ marginBottom: 12 }}>

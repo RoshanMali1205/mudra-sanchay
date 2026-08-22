@@ -80,10 +80,18 @@
   color: var(--color-muted);
   font-size: 0.78rem;
   font-weight: 700;
+  border-radius: 12px;
+  margin: 0 2px;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.bottom-nav a:hover {
+  background: #f3fafa;
 }
 
 .bottom-nav a.active {
   color: var(--color-primary-strong);
+  background: #e8f3f2;
 }
 
 .desktop-sidebar {
@@ -95,11 +103,68 @@
   display: grid;
   place-items: center;
   padding: 24px 16px;
+  position: relative;
+  background:
+    linear-gradient(180deg, rgba(17, 94, 89, 0.55), rgba(23, 33, 43, 0.72)),
+    url("/images/farm-fields.png") center / cover no-repeat;
 }
 
-.auth-card {
-  width: min(440px, 100%);
-  padding: 28px 22px;
+.auth-layout .auth-card {
+  position: relative;
+  z-index: 1;
+}
+
+.scene-photo {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 14px;
+  display: block;
+}
+
+.hero-scene {
+  position: relative;
+  margin: 0 0 16px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  min-height: 180px;
+  box-shadow: var(--shadow-card);
+}
+
+.hero-scene img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  display: block;
+}
+
+.hero-scene figcaption {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 16px;
+  color: white;
+  background: linear-gradient(transparent, rgba(17, 94, 89, 0.88));
+}
+
+.hero-scene h1,
+.hero-scene p {
+  margin: 0;
+  color: white;
+}
+
+.photo-strip {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.photo-strip img {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+  display: block;
 }
 
 .auth-card h1,
@@ -129,8 +194,10 @@
   border: 1px solid var(--color-border);
   background: white;
   border-radius: 999px;
-  padding: 0 10px;
+  padding: 0 12px;
   font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
 }
 
 .language-switcher button.active {
@@ -140,7 +207,94 @@
 }
 
 .list-card {
-  padding: 16px;
+  padding: 16px 18px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+a.list-card,
+.list-card:has(> a) {
+  display: block;
+}
+
+a.list-card:hover,
+.list-card:has(> a):hover {
+  transform: translateY(-2px);
+  border-color: #b7d4d1;
+  box-shadow: var(--shadow-card-hover);
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  padding: 24px 20px 26px;
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.28);
+}
+
+.quick-grid {
+  gap: 12px;
+}
+
+.action-card {
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  padding: 14px 12px;
+  border-radius: var(--radius-card);
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.action-card:hover {
+  transform: translateY(-2px);
+}
+
+.action-card-primary {
+  color: #ffffff;
+  background: linear-gradient(165deg, #149187, var(--color-primary-strong));
+  box-shadow: 0 10px 22px rgba(15, 118, 110, 0.26);
+}
+
+.action-card-accent {
+  color: #1f2937;
+  background: linear-gradient(165deg, #fcd34d, var(--color-accent));
+  box-shadow: 0 10px 22px rgba(245, 158, 11, 0.26);
+}
+
+.chip {
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
+}
+
+.chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-strong);
+}
+
+.language-switcher button {
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.fab {
+  box-shadow: 0 12px 24px rgba(245, 158, 11, 0.4);
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.fab:hover {
+  transform: scale(1.06);
+}
+
+.sheet {
+  box-shadow: 0 -16px 40px rgba(15, 23, 42, 0.18);
+}
+
+.sheet .ms-btn {
+  width: 100%;
+}
+
+.photo-strip img,
+.hero-scene {
+  border: 1px solid var(--color-border);
 }
 
 .fab {
@@ -229,14 +383,20 @@
   min-height: var(--touch);
   display: flex;
   align-items: center;
-  padding: 0 10px;
-  border-radius: 12px;
+  padding: 0 12px;
+  border-radius: 14px;
   font-weight: 700;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.side-nav a:hover {
+  background: #f3fafa;
 }
 
 .side-nav a.active {
   background: #e8f3f2;
   color: var(--color-primary-strong);
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 @media print {
@@ -261,7 +421,14 @@
   thead {
     display: table-header-group;
   }
+
+  .hero-scene,
+  .photo-strip {
+    display: none;
+  }
 }
+
+@media (min-width: 1024px) {
   .app-shell {
     display: grid;
     grid-template-columns: 260px 1fr;
@@ -292,5 +459,13 @@
 
   .quick-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .hero-scene img {
+    height: 240px;
+  }
+
+  .photo-strip img {
+    height: 160px;
   }
 }

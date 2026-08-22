@@ -1,5 +1,6 @@
 import { DEVELOPER_FOOTER, PRINT_BRAND, formatInrFromPaise } from "@mudra-sanchay/shared";
-import type { FarmerSummary, LedgerLine } from "@mudra-sanchay/shared";
+import type { DashboardSummary, FarmerSummary, LedgerLine } from "@mudra-sanchay/shared";
+import { buildPdfBlob, downloadPdf, type PdfDocument } from "./pdf";
 
 export function downloadExcel(filename: string, sheets: Array<{ name: string; rows: Array<Array<string | number>> }>) {
   const xmlSheets = sheets
@@ -52,8 +53,162 @@ export function statementRows(farmer: FarmerSummary, ledger: LedgerLine[], from:
   };
 }
 
-export async function shareWhatsApp(phone: string | undefined, text: string, title: string) {
-  if (navigator.share) {
+export function statementPdfDocument(
+  farmer: FarmerSummary,
+  ledger: LedgerLine[],
+  from: string,
+  to: string,
+  labels: {
+    date: string;
+    details: string;
+    crates: string;
+    amount: string;
+    balance: string;
+    outstanding: string;
+    language: string;
+  }
+): PdfDocument {
+  return {
+    filename: `${farmer.farmerCode}-statement.pdf`,
+    title: PRINT_BRAND,
+    subtitle: `${farmer.fullName} · ${farmer.farmerCode} · ${farmer.village}`,
+    meta: [
+      `${from} → ${to} · ${labels.language}`,
+      farmer.mobile ? farmer.mobile : "",
+      generatedStamp()
+    ].filter(Boolean),
+    columns: [
+      { label: labels.date, width: 150 },
+      { label: labels.details },
+      { label: labels.crates, width: 110, align: "right" },
+      { label: labels.amount, width: 150, align: "right" },
+      { label: labels.balance, width: 160, align: "right" }
+    ],
+    rows: ledger.map((line) => [
+      line.date,
+      line.description,
+      line.crates != null ? String(line.crates) : "",
+      formatInrFromPaise(line.debitPaise || line.creditPaise),
+      formatInrFromPaise(line.runningBalancePaise)
+    ]),
+    summary: [`${labels.outstanding}: ${formatInrFromPaise(farmer.outstandingPaise)}`],
+    footer: DEVELOPER_FOOTER
+  };
+}
+
+export function reportPdfDocument(
+  summary: DashboardSummary | undefined,
+  outstanding: FarmerSummary[],
+  from: string,
+  to: string,
+  labels: {
+    title: string;
+    farmer: string;
+    village: string;
+    balance: string;
+    income: string;
+    received: string;
+    expenses: string;
+    profit: string;
+    cash: string;
+    outstanding: string;
+    crates: string;
+    trips: string;
+  }
+): PdfDocument {
+  return {
+    filename: "mudra-sanchay-report.pdf",
+    title: PRINT_BRAND,
+    subtitle: labels.title,
+    meta: [
+      `${from} → ${to}`,
+      `${labels.income}: ${formatInrFromPaise(summary?.freightPaise ?? 0)}`,
+      `${labels.received}: ${formatInrFromPaise(summary?.receivedPaise ?? 0)}`,
+      `${labels.expenses}: ${formatInrFromPaise(summary?.expensesPaise ?? 0)}`,
+      `${labels.profit}: ${formatInrFromPaise(summary?.accrualProfitPaise ?? 0)}`,
+      `${labels.cash}: ${formatInrFromPaise(summary?.cashSurplusPaise ?? 0)}`,
+      `${labels.crates}: ${summary?.crates ?? 0} · ${labels.trips}: ${summary?.trips ?? 0}`,
+      generatedStamp()
+    ],
+    columns: [
+      { label: labels.farmer },
+      { label: labels.village, width: 280 },
+      { label: labels.balance, width: 180, align: "right" }
+    ],
+    rows: outstanding.map((farmer) => [
+      farmer.fullName,
+      farmer.village,
+      formatInrFromPaise(farmer.outstandingPaise)
+    ]),
+    summary: [`${labels.outstanding}: ${formatInrFromPaise(summary?.outstandingPaise ?? 0)}`],
+    footer: DEVELOPER_FOOTER
+  };
+}
+
+export function expensePdfDocument(
+  rows: Array<{ date: string; category: string; amount: string; vendor: string }>,
+  total: string,
+  labels: {
+    title: string;
+    date: string;
+    category: string;
+    amount: string;
+    vendor: string;
+    expenses: string;
+    from: string;
+    to: string;
+  }
+): PdfDocument {
+  return {
+    filename: "mudra-sanchay-expenses.pdf",
+    title: PRINT_BRAND,
+    subtitle: labels.title,
+    meta: [`${labels.from} → ${labels.to}`, generatedStamp()],
+    columns: [
+      { label: labels.date, width: 150 },
+      { label: labels.category },
+      { label: labels.vendor, width: 240 },
+      { label: labels.amount, width: 160, align: "right" }
+    ],
+    rows: rows.map((row) => [row.date, row.category, row.vendor, row.amount]),
+    summary: [`${labels.expenses}: ${total}`],
+    footer: DEVELOPER_FOOTER
+  };
+}
+
+export async function exportStatementPdf(
+  farmer: FarmerSummary,
+  ledger: LedgerLine[],
+  from: string,
+  to: string,
+  labels: Parameters<typeof statementPdfDocument>[4]
+) {
+  return downloadPdf(statementPdfDocument(farmer, ledger, from, to, labels));
+}
+
+export async function shareStatementPdf(
+  farmer: FarmerSummary,
+  ledger: LedgerLine[],
+  from: string,
+  to: string,
+  labels: Parameters<typeof statementPdfDocument>[4],
+  message: string,
+  title: string
+) {
+  const doc = statementPdfDocument(farmer, ledger, from, to, labels);
+  const blob = await buildPdfBlob(doc);
+  const file = new File([blob], doc.filename, { type: "application/pdf" });
+  await shareWhatsApp(farmer.mobile, message, title, file);
+}
+
+export async function shareWhatsApp(phone: string | undefined, text: string, title: string, file?: File) {
+  if (file && navigator.canShare?.({ files: [file] })) {
+    await navigator.share({ title, text, files: [file] });
+    return;
+  }
+  if (file) {
+    triggerDownload(file.name, file, file.type);
+  } else if (navigator.share) {
     await navigator.share({ title, text });
     return;
   }
@@ -64,6 +219,10 @@ export async function shareWhatsApp(phone: string | undefined, text: string, tit
   window.open(url, "_blank", "noopener");
 }
 
+function generatedStamp() {
+  return new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
+}
+
 function escapeXml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -72,8 +231,8 @@ function escapeXml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
-function triggerDownload(filename: string, content: string, type: string) {
-  const blob = new Blob([content], { type });
+function triggerDownload(filename: string, content: string | Blob, type: string) {
+  const blob = content instanceof Blob ? content : new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

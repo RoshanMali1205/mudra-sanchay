@@ -19,6 +19,7 @@ export function LanguageSwitcher() {
           className={language === code ? "active" : ""}
           onClick={() => {
             setLanguage(code);
+            if (!useSessionStore.getState().token) return;
             void api("/me/preferences", {
               method: "PATCH",
               body: JSON.stringify({ preferredLanguage: code })

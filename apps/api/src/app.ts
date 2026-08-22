@@ -32,6 +32,7 @@ import {
   getUserByToken,
   nextFarmerCode,
   nowIso,
+  persistStore,
   store,
   syncReceiptStatus,
   toSessionUser,
@@ -56,6 +57,7 @@ app.use("*", async (c, next) => {
   c.set("requestId", requestId);
   c.header("x-request-id", requestId);
   await next();
+  persistStore();
 });
 
 app.use(

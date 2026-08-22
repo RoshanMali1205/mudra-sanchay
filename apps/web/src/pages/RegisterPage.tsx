@@ -39,6 +39,7 @@ export function RegisterPage() {
   return (
     <div className="auth-layout">
       <form className="auth-card ms-card" onSubmit={onSubmit}>
+        <img className="scene-photo" src="/images/farm-fields.png" alt="Tomato farm fields" />
         <LanguageSwitcher />
         <h1>{t("auth.registerTitle")}</h1>
         <p className="muted">{t("auth.registerSubtitle")}</p>

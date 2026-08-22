@@ -8,6 +8,7 @@ export function useMe() {
   return useQuery({
     queryKey: ["me", token],
     enabled: Boolean(token),
+    retry: false,
     queryFn: () => api<{ user: SessionUser; business: Business | null }>("/me")
   });
 }

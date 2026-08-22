@@ -14,6 +14,9 @@ coverage
 .env.*.local
 !.env.example
 
+# Local demo data
+apps/api/.data
+
 # Netlify
 .netlify
 

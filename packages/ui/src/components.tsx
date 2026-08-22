@@ -51,14 +51,19 @@ export function StatusChip({
 export function EmptyState({
   title,
   body,
-  action
+  action,
+  imageSrc,
+  imageAlt
 }: {
   title: string;
   body: string;
   action?: ReactNode;
+  imageSrc?: string;
+  imageAlt?: string;
 }) {
   return (
     <section className="ms-card empty-state">
+      {imageSrc ? <img className="empty-photo" src={imageSrc} alt={imageAlt ?? ""} /> : null}
       <h2>{title}</h2>
       <p>{body}</p>
       {action}

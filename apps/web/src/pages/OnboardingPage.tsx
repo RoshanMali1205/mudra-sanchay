@@ -4,16 +4,19 @@ import { useTranslation } from "react-i18next";
 import { PRINT_BRAND, rupeesToPaise } from "@mudra-sanchay/shared";
 import { api } from "../api";
 import { useMe } from "../hooks";
+import { useSessionStore } from "../store";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 
 export function OnboardingPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { data, isLoading, refetch } = useMe();
+  const token = useSessionStore((state) => state.token);
+  const { data, isLoading, isError, refetch } = useMe();
   const [error, setError] = useState("");
 
-  if (isLoading) return <div className="auth-layout">Loading…</div>;
-  if (!data?.user) return <Navigate to="/auth/login" replace />;
+  if (!token) return <Navigate to="/auth/login" replace />;
+  if (isError) return <Navigate to="/auth/login" replace />;
+  if (isLoading || !data) return <div className="auth-layout">Loading…</div>;
   if (data.user.onboarded) return <Navigate to="/dashboard" replace />;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -44,6 +47,7 @@ export function OnboardingPage() {
   return (
     <div className="auth-layout">
       <form className="auth-card ms-card" onSubmit={onSubmit}>
+        <img className="scene-photo" src="/images/farm-fields.png" alt="Tomato farm fields" />
         <LanguageSwitcher />
         <h1>{t("onboarding.title")}</h1>
         <p className="muted">{t("onboarding.subtitle")}</p>
