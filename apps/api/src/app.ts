@@ -40,48 +40,84 @@ import {
   tripTotals
 } from "./store.js";
 import { fail } from "./http.js";
+import {
+  ensureBusinessMembership,
+  flushToSupabase,
+  hydrateFromSupabase,
+  isSupabaseEnabled,
+  loginWithSupabase,
+  registerWithSupabase,
+  sessionFromToken,
+  updateProfileLanguage
+} from "./cloud-store.js";
+import type { SessionUser } from "@mudra-sanchay/shared";
 
 type AppEnv = {
   Variables: {
     requestId: string;
+    user: SessionUser | null;
   };
 };
 
 export const app = new Hono<AppEnv>().basePath("/api/v1");
 
-const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173")
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "http://localhost:5173,http://127.0.0.1:5173")
   .split(",")
-  .map((origin) => origin.trim());
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+function resolveOrigin(origin: string): string {
+  if (allowedOrigins.includes(origin)) return origin;
+  if (/^https:\/\/([a-z0-9-]+--)?[a-z0-9-]+\.netlify\.app$/.test(origin)) return origin;
+  return "";
+}
 
 app.use("*", async (c, next) => {
   const requestId = c.req.header("x-request-id") ?? createId();
   c.set("requestId", requestId);
   c.header("x-request-id", requestId);
+
+  if (isSupabaseEnabled() && !c.req.path.endsWith("/health")) {
+    await hydrateFromSupabase();
+  }
+
+  const token = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+  if (isSupabaseEnabled()) {
+    c.set("user", await sessionFromToken(token));
+  } else {
+    const stored = getUserByToken(token);
+    c.set("user", stored ? toSessionUser(stored) : null);
+  }
+
   await next();
-  persistStore();
+
+  const mutating = ["POST", "PATCH", "PUT", "DELETE"].includes(c.req.method);
+  const ok = c.res.status >= 200 && c.res.status < 300;
+  if (isSupabaseEnabled()) {
+    if (mutating && ok && !c.req.path.endsWith("/health")) await flushToSupabase();
+  } else {
+    persistStore();
+  }
 });
 
 app.use(
   "*",
   cors({
-    origin: allowedOrigins,
+    origin: resolveOrigin,
     allowHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "x-request-id"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]
   })
 );
 
 function requireUser(c: Context<AppEnv>) {
-  const token = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
-  const user = getUserByToken(token);
-  if (!user) return null;
-  return toSessionUser(user);
+  return c.get("user");
 }
 
 app.get("/health", (c) =>
   c.json({
     data: {
       ok: true,
-      mode: process.env.SUPABASE_SERVICE_ROLE_KEY ? "supabase" : "local-demo",
+      mode: isSupabaseEnabled() ? "supabase" : "local-demo",
       time: nowIso()
     }
   })
@@ -92,6 +128,20 @@ app.post("/auth/register", async (c) => {
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Check the highlighted fields.", parsed.error.flatten().fieldErrors);
   }
+
+  if (isSupabaseEnabled()) {
+    try {
+      const created = await registerWithSupabase(parsed.data);
+      await ensureBusinessMembership(created.userId);
+      const user = await sessionFromToken(created.token);
+      if (!user) return fail(c, 500, "UNEXPECTED", "Account created. Sign in again.");
+      return c.json({ data: { token: created.token, user } }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not create the account.";
+      return fail(c, 409, "EMAIL_IN_USE", message);
+    }
+  }
+
   if (store.users.some((user) => user.email === parsed.data.email.toLowerCase())) {
     return fail(c, 409, "EMAIL_IN_USE", "Could not create the account with those details.");
   }
@@ -117,6 +167,16 @@ app.post("/auth/login", async (c) => {
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Enter a valid email and password.");
   }
+
+  if (isSupabaseEnabled()) {
+    try {
+      return c.json({ data: await loginWithSupabase(parsed.data) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Email or password is incorrect.";
+      return fail(c, 401, "INVALID_CREDENTIALS", message);
+    }
+  }
+
   const user = store.users.find(
     (item) =>
       item.email === parsed.data.email.toLowerCase() && item.password === parsed.data.password
@@ -140,11 +200,18 @@ app.post("/auth/forgot-password", async (c) => {
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Enter a valid email.");
   }
-  const token = createId();
-  store.resetTokens.set(token, {
-    email: parsed.data.email.toLowerCase(),
-    expiresAt: Date.now() + 30 * 60 * 1000
-  });
+  if (isSupabaseEnabled()) {
+    const { supabaseAdmin } = await import("./supabase.js");
+    await supabaseAdmin()?.auth.resetPasswordForEmail(parsed.data.email.toLowerCase(), {
+      redirectTo: `${process.env.APP_BASE_URL ?? "http://localhost:5173"}/auth/forgot-password`
+    });
+  } else {
+    const token = createId();
+    store.resetTokens.set(token, {
+      email: parsed.data.email.toLowerCase(),
+      expiresAt: Date.now() + 30 * 60 * 1000
+    });
+  }
   return c.json({
     data: {
       ok: true,
@@ -159,6 +226,9 @@ app.patch("/me/preferences", async (c) => {
   const body = (await c.req.json()) as { preferredLanguage?: "en" | "hi" | "mr" };
   const stored = store.users.find((item) => item.id === user.id);
   if (stored && body.preferredLanguage) stored.preferredLanguage = body.preferredLanguage;
+  if (isSupabaseEnabled() && body.preferredLanguage) {
+    await updateProfileLanguage(user.id, body.preferredLanguage);
+  }
   return c.json({ data: { user: stored ? toSessionUser(stored) : user } });
 });
 
@@ -173,6 +243,12 @@ app.post("/auth/bootstrap", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   if (user.onboarded) return fail(c, 409, "ALREADY_ONBOARDED", "Business profile already exists.");
+
+  if (isSupabaseEnabled() && store.businesses[0]) {
+    await ensureBusinessMembership(user.id);
+    const stored = store.users.find((item) => item.id === user.id);
+    return c.json({ data: { user: stored ? toSessionUser(stored) : { ...user, onboarded: true, businessId: store.businesses[0].id, role: "admin" as const }, business: store.businesses[0] } }, 201);
+  }
 
   const parsed = onboardingSchema.safeParse(await c.req.json());
   if (!parsed.success) {

@@ -12,6 +12,7 @@
   "dependencies": {
     "@hono/node-server": "^1.14.1",
     "@mudra-sanchay/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.112.3",
     "hono": "^4.7.5",
     "zod": "^3.24.2"
   },
