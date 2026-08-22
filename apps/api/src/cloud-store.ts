@@ -404,6 +404,27 @@ export async function sessionFromToken(token: string | undefined): Promise<Sessi
   };
 }
 
+export async function ensureMudraAccess(userId: string, fullName?: string) {
+  const db = supabaseAdmin();
+  if (!db) return;
+  assertOk(
+    await db.from("app_memberships").upsert(
+      { user_id: userId, app_code: APP_CODE, role: "admin" },
+      { onConflict: "user_id,app_code" }
+    ),
+    "enable mudra membership"
+  );
+  assertOk(
+    await db.from("mudra_profiles").upsert({
+      id: userId,
+      full_name: fullName || "User",
+      preferred_language: "en",
+      status: "active"
+    }),
+    "save mudra profile"
+  );
+}
+
 export async function registerWithSupabase(input: { email: string; password: string; fullName: string }) {
   const db = supabaseAdmin();
   if (!db) throw new Error("Supabase is not configured");
@@ -413,26 +434,30 @@ export async function registerWithSupabase(input: { email: string; password: str
     email_confirm: true,
     user_metadata: { full_name: input.fullName }
   });
-  if (error || !data.user) throw new Error(error?.message ?? "Could not create the account.");
 
-  await db.from("app_memberships").upsert({
-    user_id: data.user.id,
-    app_code: APP_CODE,
-    role: "admin"
-  });
-  await db.from("mudra_profiles").upsert({
-    id: data.user.id,
-    full_name: input.fullName,
-    preferred_language: "en",
-    status: "active"
-  });
+  const alreadyExists =
+    Boolean(error) &&
+    (/already|exists|registered/i.test(error?.message ?? "") ||
+      error?.code === "email_exists" ||
+      error?.status === 422);
+
+  if (error && !alreadyExists) throw new Error(error.message);
+  if (!alreadyExists && !data.user) throw new Error("Could not create the account.");
 
   const { data: session, error: signInError } = await db.auth.signInWithPassword({
     email: input.email,
     password: input.password
   });
-  if (signInError || !session.session) throw new Error(signInError?.message ?? "Account created. Sign in again.");
-  return { token: session.session.access_token, userId: data.user.id };
+  if (signInError || !session.session || !session.user) {
+    throw new Error(
+      alreadyExists
+        ? "This email is already registered. Sign in with the same password."
+        : (signInError?.message ?? "Account created. Sign in again.")
+    );
+  }
+
+  await ensureMudraAccess(session.user.id, input.fullName);
+  return { token: session.session.access_token, userId: session.user.id };
 }
 
 export async function updateProfileLanguage(userId: string, preferredLanguage: "en" | "hi" | "mr") {
@@ -448,9 +473,12 @@ export async function loginWithSupabase(input: { email: string; password: string
   const db = supabaseAdmin();
   if (!db) throw new Error("Supabase is not configured");
   const { data, error } = await db.auth.signInWithPassword(input);
-  if (error || !data.session) throw new Error("Email or password is incorrect.");
+  if (error || !data.session || !data.user) throw new Error("Email or password is incorrect.");
+  const fullName = (data.user.user_metadata.full_name as string | undefined) ?? data.user.email ?? "User";
+  await ensureMudraAccess(data.user.id, fullName);
+  await ensureBusinessMembership(data.user.id);
   const session = await sessionFromToken(data.session.access_token);
-  if (!session) throw new Error("This account is not enabled for Mudra Sanchay.");
+  if (!session) throw new Error("Could not open this Mudra Sanchay account. Try again.");
   return { token: data.session.access_token, user: session };
 }
 
