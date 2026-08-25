@@ -78,7 +78,7 @@ export function NewTripPage() {
   const addEntry = useMutation({
     mutationFn: async (form: FormData) => {
       if (!trip) throw new Error("Trip missing");
-      return api(`/trips/${trip.id}/entries`, {
+      return api<Trip>(`/trips/${trip.id}/entries`, {
         method: "POST",
         body: JSON.stringify({
           farmerId: form.get("farmerId"),
@@ -87,9 +87,8 @@ export function NewTripPage() {
         })
       });
     },
-    onSuccess: async () => {
-      if (!trip) return;
-      setTrip(await api<Trip>(`/trips/${trip.id}`));
+    onSuccess: (updated) => {
+      setTrip(updated);
       setState("saved");
     },
     onError: (err) => {
@@ -100,15 +99,34 @@ export function NewTripPage() {
 
   async function updateEntry(entryId: string, crateCount: number) {
     if (!trip) return;
+    const previous = trip;
+    const entries = trip.entries.map((entry) =>
+      entry.id === entryId
+        ? {
+            ...entry,
+            crateCount,
+            freightAmountPaise: calculateFreightPaise(crateCount, entry.ratePaise)
+          }
+        : entry
+    );
+    // Optimistic update so freight totals refresh immediately while the API saves.
+    setTrip({
+      ...trip,
+      entries,
+      totalCrates: entries.reduce((sum, entry) => sum + entry.crateCount, 0),
+      totalFreightPaise: entries.reduce((sum, entry) => sum + entry.freightAmountPaise, 0),
+      farmerCount: new Set(entries.map((entry) => entry.farmerId)).size
+    });
     setState("saving");
     try {
-      await api(`/trips/${trip.id}/entries/${entryId}`, {
+      const updated = await api<Trip>(`/trips/${trip.id}/entries/${entryId}`, {
         method: "PATCH",
         body: JSON.stringify({ crateCount })
       });
-      setTrip(await api<Trip>(`/trips/${trip.id}`));
+      setTrip(updated);
       setState("saved");
     } catch (err) {
+      setTrip(previous);
       setState("error");
       setError(err instanceof Error ? err.message : t("status.error"));
     }
@@ -116,8 +134,8 @@ export function NewTripPage() {
 
   async function removeEntry(entryId: string) {
     if (!trip) return;
-    await api(`/trips/${trip.id}/entries/${entryId}`, { method: "DELETE" });
-    setTrip(await api<Trip>(`/trips/${trip.id}`));
+    const updated = await api<Trip>(`/trips/${trip.id}/entries/${entryId}`, { method: "DELETE" });
+    setTrip(updated);
   }
 
   async function completeTrip() {

@@ -41,6 +41,8 @@ import {
 } from "./store.js";
 import { fail } from "./http.js";
 import {
+  captureStoreSnapshot,
+  changedStoreSlices,
   ensureBusinessMembership,
   flushToSupabase,
   hydrateFromSupabase,
@@ -89,13 +91,16 @@ app.use("*", async (c, next) => {
     c.set("user", stored ? toSessionUser(stored) : null);
   }
 
+  const before = isSupabaseEnabled() ? captureStoreSnapshot() : null;
   await next();
 
   const mutating = ["POST", "PATCH", "PUT", "DELETE"].includes(c.req.method);
   const ok = c.res.status >= 200 && c.res.status < 300;
   if (isSupabaseEnabled()) {
-    if (mutating && ok && !c.req.path.endsWith("/health")) await flushToSupabase();
-  } else {
+    if (mutating && ok && !c.req.path.endsWith("/health") && before) {
+      await flushToSupabase(changedStoreSlices(before));
+    }
+  } else if (mutating && ok) {
     persistStore();
   }
 });
@@ -496,12 +501,8 @@ app.post("/trips/:id/entries", async (c) => {
     crateCount: entry.crateCount,
     freightAmountPaise
   });
-  return c.json({
-    data: {
-      ...entry,
-      freightAmountFormatted: `INR ${(freightAmountPaise / 100).toFixed(2)}`
-    }
-  }, 201);
+  // Return the full trip so the client can update totals without a second GET.
+  return c.json({ data: trip }, 201);
 });
 
 app.patch("/trips/:id/entries/:entryId", async (c) => {
@@ -524,7 +525,7 @@ app.patch("/trips/:id/entries/:entryId", async (c) => {
     entry.crateCount > 0 ? calculateFreightPaise(entry.crateCount, entry.ratePaise) : 0;
   Object.assign(trip, tripTotals(trip.entries));
   audit(user.fullName, "update", "crate_entry", entry.id, before, entry);
-  return c.json({ data: entry });
+  return c.json({ data: trip });
 });
 
 app.delete("/trips/:id/entries/:entryId", (c) => {
