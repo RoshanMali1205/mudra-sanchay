@@ -52,6 +52,7 @@ import {
   sessionFromToken,
   updateProfileLanguage
 } from "./cloud-store.js";
+import { supabaseConfigStatus } from "./supabase.js";
 import type { SessionUser } from "@mudra-sanchay/shared";
 
 type AppEnv = {
@@ -118,15 +119,17 @@ function requireUser(c: Context<AppEnv>) {
   return c.get("user");
 }
 
-app.get("/health", (c) =>
-  c.json({
+app.get("/health", (c) => {
+  const supabase = supabaseConfigStatus();
+  return c.json({
     data: {
       ok: true,
-      mode: isSupabaseEnabled() ? "supabase" : "local-demo",
+      mode: supabase.enabled ? "supabase" : "local-demo",
+      supabase,
       time: nowIso()
     }
-  })
-);
+  });
+});
 
 app.post("/auth/register", async (c) => {
   const parsed = registerSchema.safeParse(await c.req.json());

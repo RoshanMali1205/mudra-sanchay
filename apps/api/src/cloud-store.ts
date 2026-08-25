@@ -3,7 +3,15 @@ import { APP_CODE, createSupabaseAuthClient, supabaseAdmin, isSupabaseEnabled } 
 import { store, tripTotals, type StoredUser } from "./store.js";
 
 function assertOk<T extends { error: { message: string } | null }>(result: T, action: string): T {
-  if (result.error) throw new Error(`${action}: ${result.error.message}`);
+  if (result.error) {
+    const message = result.error.message;
+    if (/row-level security/i.test(message)) {
+      throw new Error(
+        `${action}: ${message}. Shared Supabase projects need SUPABASE_SERVICE_ROLE_KEY set to the service_role secret (not the anon key) on Netlify, then redeploy.`
+      );
+    }
+    throw new Error(`${action}: ${message}`);
+  }
   return result;
 }
 
@@ -461,7 +469,9 @@ export async function sessionFromToken(token: string | undefined): Promise<Sessi
 
 export async function ensureMudraAccess(userId: string, fullName?: string) {
   const db = supabaseAdmin();
-  if (!db) return;
+  if (!db) {
+    throw new Error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the API.");
+  }
   assertOk(
     await db.from("app_memberships").upsert(
       { user_id: userId, app_code: APP_CODE, role: "admin" },
