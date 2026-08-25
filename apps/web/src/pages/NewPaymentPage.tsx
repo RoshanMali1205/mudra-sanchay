@@ -34,7 +34,12 @@ export function NewPaymentPage() {
         body: JSON.stringify({ ...body, confirmAdvance })
       });
       setState("saved");
-      await queryClient.invalidateQueries();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["payments"] }),
+        queryClient.invalidateQueries({ queryKey: ["farmers"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+        queryClient.invalidateQueries({ queryKey: ["farmer"] })
+      ]);
     } catch (err) {
       if (err instanceof ApiError && err.code === "ADVANCE_CONFIRM") {
         setPending(body);

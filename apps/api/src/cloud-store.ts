@@ -156,30 +156,77 @@ export async function hydrateFromSupabase() {
   store.ownerCreated = store.businesses.length > 0;
 }
 
-export async function flushToSupabase() {
+export type StoreSlice =
+  | "businesses"
+  | "members"
+  | "vehicles"
+  | "routes"
+  | "farmers"
+  | "trips"
+  | "entries"
+  | "payments"
+  | "expenses"
+  | "receipts";
+
+export type StoreSnapshot = Record<StoreSlice, string>;
+
+/** Capture store slices so mutations only flush what actually changed. */
+export function captureStoreSnapshot(): StoreSnapshot {
+  return {
+    businesses: JSON.stringify(store.businesses),
+    members: JSON.stringify(store.members),
+    vehicles: JSON.stringify(store.vehicles),
+    routes: JSON.stringify(store.routes),
+    farmers: JSON.stringify(store.farmers),
+    trips: JSON.stringify(
+      store.trips.map(({ entries: _entries, totalCrates: _c, totalFreightPaise: _f, farmerCount: _n, ...trip }) => trip)
+    ),
+    entries: JSON.stringify(store.trips.map((trip) => ({ tripId: trip.id, entries: trip.entries }))),
+    payments: JSON.stringify(store.payments),
+    expenses: JSON.stringify(store.expenses),
+    receipts: JSON.stringify(store.receipts)
+  };
+}
+
+export function changedStoreSlices(before: StoreSnapshot, after: StoreSnapshot = captureStoreSnapshot()): Set<StoreSlice> {
+  const dirty = new Set<StoreSlice>();
+  for (const key of Object.keys(before) as StoreSlice[]) {
+    if (before[key] !== after[key]) dirty.add(key);
+  }
+  return dirty;
+}
+
+export async function flushToSupabase(dirty?: Set<StoreSlice>) {
   const db = supabaseAdmin();
   if (!db) return;
   const businessId = store.businesses[0]?.id;
   if (!businessId) return;
+  // Empty dirty set = nothing changed this request; skip all writes.
+  if (dirty && dirty.size === 0) return;
 
-  assertOk(
-    await db.from("mudra_businesses").upsert(
-      store.businesses.map((item) => ({
-        id: item.id,
-        name: item.name,
-        print_name: item.printName,
-        owner_name: item.ownerName,
-        phone: item.phone ?? null,
-        default_language: item.defaultLanguage,
-        timezone: item.timezone,
-        currency: item.currency,
-        default_rate_paise: item.defaultRatePaise
-      }))
-    ),
-    "flush businesses"
-  );
+  const writeAll = !dirty;
+  const should = (slice: StoreSlice) => writeAll || Boolean(dirty?.has(slice));
 
-  if (store.members.length) {
+  if (should("businesses") && store.businesses.length) {
+    assertOk(
+      await db.from("mudra_businesses").upsert(
+        store.businesses.map((item) => ({
+          id: item.id,
+          name: item.name,
+          print_name: item.printName,
+          owner_name: item.ownerName,
+          phone: item.phone ?? null,
+          default_language: item.defaultLanguage,
+          timezone: item.timezone,
+          currency: item.currency,
+          default_rate_paise: item.defaultRatePaise
+        }))
+      ),
+      "flush businesses"
+    );
+  }
+
+  if (should("members") && store.members.length) {
     assertOk(
       await db.from("mudra_business_members").upsert(
         store.members.map((item) => ({
@@ -194,7 +241,7 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.vehicles.length) {
+  if (should("vehicles") && store.vehicles.length) {
     assertOk(
       await db.from("mudra_vehicles").upsert(
         store.vehicles.map((item) => ({
@@ -209,7 +256,7 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.routes.length) {
+  if (should("routes") && store.routes.length) {
     assertOk(
       await db.from("mudra_routes").upsert(
         store.routes.map((item) => ({
@@ -225,7 +272,7 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.farmers.length) {
+  if (should("farmers") && store.farmers.length) {
     assertOk(
       await db.from("mudra_farmers").upsert(
         store.farmers.map((item) => ({
@@ -244,7 +291,7 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.trips.length) {
+  if (should("trips") && store.trips.length) {
     assertOk(
       await db.from("mudra_trips").upsert(
         store.trips.map((item) => ({
@@ -262,81 +309,89 @@ export async function flushToSupabase() {
     );
   }
 
-  assertOk(await db.from("mudra_crate_entries").delete().eq("business_id", businessId), "clear crate entries");
-  if (store.trips.some((trip) => trip.entries.length)) {
-    assertOk(
-      await db.from("mudra_crate_entries").insert(
-        store.trips.flatMap((trip) =>
-          trip.entries.map((entry) => ({
-            id: entry.id,
+  if (should("entries")) {
+    assertOk(await db.from("mudra_crate_entries").delete().eq("business_id", businessId), "clear crate entries");
+    if (store.trips.some((trip) => trip.entries.length)) {
+      assertOk(
+        await db.from("mudra_crate_entries").insert(
+          store.trips.flatMap((trip) =>
+            trip.entries.map((entry) => ({
+              id: entry.id,
+              business_id: businessId,
+              trip_id: trip.id,
+              farmer_id: entry.farmerId,
+              crate_count: entry.crateCount,
+              rate_paise: entry.ratePaise,
+              freight_amount_paise: entry.freightAmountPaise,
+              rate_source: entry.rateSource
+            }))
+          )
+        ),
+        "flush crate entries"
+      );
+    }
+  }
+
+  if (should("payments")) {
+    assertOk(await db.from("mudra_payments").delete().eq("business_id", businessId), "clear payments");
+    if (store.payments.length) {
+      assertOk(
+        await db.from("mudra_payments").insert(
+          store.payments.map((item) => ({
+            id: item.id,
             business_id: businessId,
-            trip_id: trip.id,
-            farmer_id: entry.farmerId,
-            crate_count: entry.crateCount,
-            rate_paise: entry.ratePaise,
-            freight_amount_paise: entry.freightAmountPaise,
-            rate_source: entry.rateSource
+            farmer_id: item.farmerId,
+            payment_date: item.paymentDate,
+            amount_paise: item.amountPaise,
+            mode: item.mode,
+            notes: item.notes ?? null
           }))
-        )
-      ),
-      "flush crate entries"
-    );
+        ),
+        "flush payments"
+      );
+    }
   }
 
-  assertOk(await db.from("mudra_payments").delete().eq("business_id", businessId), "clear payments");
-  if (store.payments.length) {
-    assertOk(
-      await db.from("mudra_payments").insert(
-        store.payments.map((item) => ({
-          id: item.id,
-          business_id: businessId,
-          farmer_id: item.farmerId,
-          payment_date: item.paymentDate,
-          amount_paise: item.amountPaise,
-          mode: item.mode,
-          notes: item.notes ?? null
-        }))
-      ),
-      "flush payments"
-    );
+  if (should("expenses")) {
+    assertOk(await db.from("mudra_expenses").delete().eq("business_id", businessId), "clear expenses");
+    if (store.expenses.length) {
+      assertOk(
+        await db.from("mudra_expenses").insert(
+          store.expenses.map((item) => ({
+            id: item.id,
+            business_id: businessId,
+            expense_date: item.expenseDate,
+            category_code: item.categoryCode,
+            amount_paise: item.amountPaise,
+            vendor_name: item.vendorName ?? null
+          }))
+        ),
+        "flush expenses"
+      );
+    }
   }
 
-  assertOk(await db.from("mudra_expenses").delete().eq("business_id", businessId), "clear expenses");
-  if (store.expenses.length) {
-    assertOk(
-      await db.from("mudra_expenses").insert(
-        store.expenses.map((item) => ({
-          id: item.id,
-          business_id: businessId,
-          expense_date: item.expenseDate,
-          category_code: item.categoryCode,
-          amount_paise: item.amountPaise,
-          vendor_name: item.vendorName ?? null
-        }))
-      ),
-      "flush expenses"
-    );
-  }
-
-  assertOk(await db.from("mudra_market_receipts").delete().eq("business_id", businessId), "clear receipts");
-  if (store.receipts.length) {
-    assertOk(
-      await db.from("mudra_market_receipts").insert(
-        store.receipts.map((item) => ({
-          id: item.id,
-          business_id: businessId,
-          farmer_id: item.farmerId ?? null,
-          receipt_number: item.receiptNumber ?? null,
-          receipt_date: item.receiptDate ?? null,
-          gross_amount_paise: item.grossAmountPaise,
-          net_amount_paise: item.netAmountPaise,
-          paid_amount_paise: item.paidAmountPaise,
-          payment_status: item.paymentStatus,
-          original_storage_path: item.fileName
-        }))
-      ),
-      "flush receipts"
-    );
+  if (should("receipts")) {
+    assertOk(await db.from("mudra_market_receipts").delete().eq("business_id", businessId), "clear receipts");
+    if (store.receipts.length) {
+      assertOk(
+        await db.from("mudra_market_receipts").insert(
+          store.receipts.map((item) => ({
+            id: item.id,
+            business_id: businessId,
+            farmer_id: item.farmerId ?? null,
+            receipt_number: item.receiptNumber ?? null,
+            receipt_date: item.receiptDate ?? null,
+            gross_amount_paise: item.grossAmountPaise,
+            net_amount_paise: item.netAmountPaise,
+            paid_amount_paise: item.paidAmountPaise,
+            payment_status: item.paymentStatus,
+            original_storage_path: item.fileName
+          }))
+        ),
+        "flush receipts"
+      );
+    }
   }
 }
 
