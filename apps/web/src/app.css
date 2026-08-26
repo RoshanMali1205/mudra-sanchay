@@ -364,6 +364,24 @@ a.list-card:hover,
   letter-spacing: -0.01em;
 }
 
+.entity-card-body .row-between {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.entity-card-body .row-between > strong {
+  min-width: 0;
+  flex: 1 1 10rem;
+  overflow-wrap: anywhere;
+}
+
+.entity-card-body .row-between > .ms-btn {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
 .entity-card-meta {
   display: flex;
   flex-wrap: wrap;
@@ -852,11 +870,47 @@ a.list-card:hover,
   margin-top: auto;
 }
 
+.topbar .brand strong {
+  max-width: min(52vw, 12.5rem);
+}
+
 .topbar .brand small {
-  max-width: 42vw;
+  max-width: min(52vw, 12.5rem);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (max-width: 400px) {
+  .topbar {
+    padding-inline: 10px;
+    gap: 8px;
+  }
+
+  .topbar .brand img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .topbar .brand strong {
+    max-width: min(46vw, 10.5rem);
+    font-size: 0.95rem;
+  }
+
+  .topbar .brand small {
+    max-width: min(46vw, 10.5rem);
+  }
+
+  .topbar .language-switcher {
+    gap: 2px;
+    padding: 3px;
+  }
+
+  .topbar .language-switcher button {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 0.78rem;
+  }
 }
 
 @keyframes rise-in {
