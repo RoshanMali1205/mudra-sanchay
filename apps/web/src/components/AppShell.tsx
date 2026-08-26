@@ -4,8 +4,7 @@ import { useMe } from "../hooks";
 import { api, ApiError } from "../api";
 import { useSessionStore } from "../store";
 import { LanguageSwitcher } from "./LanguageSwitcher";
-import { QuickEntrySheet } from "./QuickEntrySheet";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 const navItems = [
   { to: "/dashboard", key: "nav.home" },
@@ -21,7 +20,6 @@ export function AppShell() {
   const token = useSessionStore((state) => state.token);
   const setToken = useSessionStore((state) => state.setToken);
   const { data, isError, error, isSuccess, refetch, isFetching } = useMe();
-  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     if (isError && error instanceof ApiError && error.status === 401) {
@@ -120,10 +118,6 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <button className="fab" aria-label={t("dashboard.quickActions")} onClick={() => setSheetOpen(true)}>
-          +
-        </button>
-        {sheetOpen ? <QuickEntrySheet onClose={() => setSheetOpen(false)} /> : null}
       </div>
     </div>
   );

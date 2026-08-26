@@ -7,15 +7,9 @@
 }
 
 .app-main {
-  padding: 18px 16px calc(var(--nav-height) + 28px);
+  padding: 18px 16px calc(var(--nav-height) + 20px);
   max-width: 1100px;
   margin: 0 auto;
-}
-
-@media (max-width: 1023px) {
-  .app-main {
-    padding-right: 78px;
-  }
 }
 
 .topbar,
@@ -31,6 +25,19 @@
 
 .page-header {
   margin-bottom: 6px;
+}
+
+.page-header-compact {
+  margin-bottom: 10px;
+  align-items: center;
+}
+
+.compact-filter {
+  margin-bottom: 12px;
+}
+
+.compact-filter .ms-label {
+  font-size: 0.82rem;
 }
 
 .page-header h1 {
@@ -879,15 +886,6 @@ a.list-card:hover,
   width: 100%;
 }
 
-.fab {
-  box-shadow: 0 12px 24px rgba(245, 158, 11, 0.4);
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
-}
-
-.fab:hover {
-  transform: scale(1.06);
-}
-
 .sheet {
   box-shadow: 0 -16px 40px rgba(15, 23, 42, 0.18);
 }
@@ -899,22 +897,6 @@ a.list-card:hover,
 .photo-strip img,
 .hero-scene {
   border: 1px solid var(--color-border);
-}
-
-.fab {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--nav-height) + 16px);
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  border: 0;
-  background: var(--color-accent);
-  color: #1f2937;
-  font-size: 28px;
-  font-weight: 800;
-  box-shadow: var(--shadow-card);
-  cursor: pointer;
 }
 
 .sheet-backdrop {
@@ -976,8 +958,7 @@ a.list-card:hover,
   .no-print,
   .bottom-nav,
   .topbar,
-  .desktop-sidebar,
-  .fab {
+  .desktop-sidebar {
     display: none !important;
   }
 
@@ -1039,8 +1020,7 @@ a.list-card:hover,
     top: 0;
   }
 
-  .bottom-nav,
-  .fab {
+  .bottom-nav {
     display: none;
   }
 

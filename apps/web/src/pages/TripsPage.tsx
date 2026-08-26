@@ -20,21 +20,16 @@ export function TripsPage() {
 
   return (
     <section>
-      <header className="page-header row-between">
-        <div>
-          <h1>{t("nav.trips")}</h1>
-          <p className="muted">{t("trip.date")}</p>
-        </div>
+      <header className="page-header page-header-compact row-between">
+        <h1>{t("nav.trips")}</h1>
         <Link className="ms-btn ms-btn-primary" to="/trips/new">
           {t("trip.new")}
         </Link>
       </header>
-      <div className="filters-panel">
-        <label className="ms-field">
-          <span className="ms-label">{t("trip.date")}</span>
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-        </label>
-      </div>
+      <label className="ms-field compact-filter">
+        <span className="ms-label">{t("trip.date")}</span>
+        <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+      </label>
       {data.length === 0 ? (
         <EmptyState
           title={t("nav.trips")}
