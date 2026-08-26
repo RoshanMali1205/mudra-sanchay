@@ -25,7 +25,7 @@ export function FarmerStatementPage() {
     () => resolveDateRange(preset, from, to),
     [preset, from, to]
   );
-  const { data } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["farmer-statement", farmerId, range.from, range.to],
     enabled: Boolean(farmerId),
     queryFn: () =>
@@ -36,7 +36,10 @@ export function FarmerStatementPage() {
 
   const [busy, setBusy] = useState<"pdf" | "share" | null>(null);
 
-  if (!data) return <p>Loading…</p>;
+  if (isLoading) return <p className="muted">Loading…</p>;
+  if (isError || !data) {
+    return <p className="ms-error">{error instanceof Error ? error.message : t("status.error")}</p>;
+  }
   const { farmer, ledger } = data;
   const message = `Namaskar ${farmer.fullName}, ${range.from} to ${range.to} cha Radhe Krishna Transport statement sobat pathavla aahe. Baki rakkam: ${formatInrFromPaise(farmer.outstandingPaise)}.`;
   const pdfLabels = {
