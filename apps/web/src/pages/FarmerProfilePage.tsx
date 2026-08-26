@@ -9,13 +9,16 @@ export function FarmerProfilePage() {
   const { t } = useTranslation();
   const { farmerId } = useParams();
   const queryClient = useQueryClient();
-  const { data } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["farmer", farmerId],
     enabled: Boolean(farmerId),
     queryFn: () => api<{ farmer: FarmerSummary; ledger: LedgerLine[] }>(`/farmers/${farmerId}`)
   });
 
-  if (!data) return <p>Loading…</p>;
+  if (isLoading) return <p className="muted">Loading…</p>;
+  if (isError || !data) {
+    return <p className="ms-error">{error instanceof Error ? error.message : t("status.error")}</p>;
+  }
   const { farmer, ledger } = data;
 
   async function toggleArchive() {
