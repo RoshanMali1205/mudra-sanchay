@@ -275,14 +275,21 @@ export function ReportsPage() {
                   ) : (
                     farmers.map((farmer) => (
                       <tr key={farmer.farmerId}>
-                        <td>
+                        <td data-label={t("farmer.name")}>
                           <Link to={`/farmers/${farmer.farmerId}`}>{farmer.fullName}</Link>
                           <div className="muted">{farmer.farmerCode}</div>
                         </td>
-                        <td>{farmer.village}</td>
-                        <td className="num">{farmer.crates}</td>
-                        <td className="num">{formatInrFromPaise(farmer.freightPaise)}</td>
-                        <td className={`num ${farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}`}>
+                        <td data-label={t("farmer.village")}>{farmer.village}</td>
+                        <td className="num" data-label={t("trip.crates")}>
+                          {farmer.crates}
+                        </td>
+                        <td className="num" data-label={t("reports.income")}>
+                          {formatInrFromPaise(farmer.freightPaise)}
+                        </td>
+                        <td
+                          className={`num ${farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}`}
+                          data-label={t("payment.balance")}
+                        >
                           {formatInrFromPaise(farmer.outstandingPaise)}
                         </td>
                       </tr>
@@ -319,11 +326,14 @@ export function ReportsPage() {
                   ) : (
                     outstanding.map((farmer) => (
                       <tr key={farmer.id}>
-                        <td>
+                        <td data-label={t("farmer.name")}>
                           <Link to={`/farmers/${farmer.id}`}>{farmer.fullName}</Link>
                         </td>
-                        <td>{farmer.village}</td>
-                        <td className={`num ${farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}`}>
+                        <td data-label={t("farmer.village")}>{farmer.village}</td>
+                        <td
+                          className={`num ${farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}`}
+                          data-label={t("payment.balance")}
+                        >
                           {formatInrFromPaise(farmer.outstandingPaise)}
                         </td>
                       </tr>

@@ -75,19 +75,22 @@
 .metric-body {
   position: relative;
   z-index: 2;
-  padding: 16px 16px 18px;
+  padding: 14px 12px 16px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .metric-card-photo .metric-body {
-  padding: 18px 16px 16px;
+  padding: 16px 12px 14px;
 }
 
 .metric-label,
 .metric-hint {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.86rem;
+  font-size: 0.82rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .metric-card-photo .metric-label,
@@ -97,9 +100,10 @@
 
 .metric-value {
   margin: 10px 0 0;
-  font-size: 1.4rem;
+  font-size: clamp(1.05rem, 4.5vw, 1.4rem);
   font-weight: 800;
   letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
 }
 
 .metric-card-photo .metric-value {
