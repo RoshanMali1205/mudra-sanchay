@@ -11,6 +11,4 @@
   <rect x="98" y="82" width="124" height="8" rx="4" fill="#fed7aa"/>
   <rect x="98" y="104" width="110" height="8" rx="4" fill="#fed7aa"/>
   <rect x="98" y="126" width="72" height="8" rx="4" fill="#fb923c"/>
-  <circle cx="248" cy="150" r="22" fill="#f59e0b"/>
-  <path d="M240 150h16M248 142v16" stroke="#7c2d12" stroke-width="4" stroke-linecap="round"/>
 </svg>
