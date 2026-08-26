@@ -181,7 +181,7 @@ export function NewTripPage() {
         <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
       </header>
       {!trip ? (
-        <form className="ms-card list-card" onSubmit={(event) => void createTrip(event)}>
+        <form className="ms-card form-card" onSubmit={(event) => void createTrip(event)}>
           <label className="ms-field">
             <span className="ms-label">{t("trip.date")}</span>
             <input name="tripDate" type="date" defaultValue={today} required />
@@ -207,32 +207,37 @@ export function NewTripPage() {
             </select>
           </label>
           {error ? <p className="ms-error">{error}</p> : null}
-          <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
-            {t("action.continue")}
-          </button>
+          <div className="form-actions">
+            <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
+              {t("action.continue")}
+            </button>
+          </div>
         </form>
       ) : (
         <>
-          <article className="ms-card list-card">
+          <article className="ms-card form-card">
             <div className="row-between">
               <strong>
                 {trip.tripDate} · {t("trip.number")} {trip.tripNumber}
               </strong>
-              <span>{t(`trip.${trip.status}`)}</span>
+              <span className="entity-code">{t(`trip.${trip.status}`)}</span>
             </div>
-            <p>
+            <p style={{ margin: 0 }}>
               {t("trip.totals")}: {trip.farmerCount ?? new Set(trip.entries.map((entry) => entry.farmerId)).size}{" "}
               {t("trip.farmersCount")} · {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
             </p>
             {trip.status === "draft" && previousTrip ? (
-              <button className="ms-btn ms-btn-ghost" onClick={() => void copyFarmers()}>
-                {t("trip.copyFarmers")}
-              </button>
+              <div className="form-actions">
+                <button className="ms-btn ms-btn-ghost" onClick={() => void copyFarmers()}>
+                  {t("trip.copyFarmers")}
+                </button>
+              </div>
             ) : null}
           </article>
           {trip.status === "draft" ? (
             <form
-              className="ms-card list-card"
+              className="ms-card form-card"
+              style={{ marginTop: 14 }}
               onSubmit={(event) => {
                 event.preventDefault();
                 setState("saving");
@@ -274,19 +279,22 @@ export function NewTripPage() {
                   onChange={(event) => setRateRupees(Number(event.target.value))}
                 />
               </label>
-              <p>
+              <p style={{ margin: 0 }}>
                 {t("trip.freightPreview")}: {formatInrFromPaise(preview)} · {t("trip.rateSource")}: manual
               </p>
               {error ? <p className="ms-error">{error}</p> : null}
-              <button className="ms-btn ms-btn-primary" disabled={addEntry.isPending}>
-                {t("trip.addEntry")}
-              </button>
+              <div className="form-actions">
+                <button className="ms-btn ms-btn-primary" disabled={addEntry.isPending}>
+                  {t("trip.addEntry")}
+                </button>
+              </div>
             </form>
           ) : null}
+          <div className="stack-list" style={{ marginTop: 14 }}>
           {trip.entries.map((entry) => {
             const farmerDue = farmers.find((farmer) => farmer.id === entry.farmerId)?.outstandingPaise;
             return (
-            <article key={entry.id} className="list-card ms-card" style={{ marginTop: 12 }}>
+            <article key={entry.id} className="ms-card form-card">
               <strong>{entry.farmerName}</strong>
               <p className="muted">
                 {entry.crateCount || "—"} {t("trip.crates")} · {formatInrFromPaise(entry.freightAmountPaise)} · {entry.rateSource}
@@ -302,6 +310,7 @@ export function NewTripPage() {
               {trip.status === "draft" ? (
                 <div className="row-between">
                   <input
+                    className="ms-control"
                     type="number"
                     min={1}
                     defaultValue={entry.crateCount || ""}
@@ -318,19 +327,24 @@ export function NewTripPage() {
             </article>
             );
           })}
+          </div>
           {trip.status === "draft" ? (
-            <button className="ms-btn ms-btn-accent" style={{ marginTop: 16 }} onClick={() => setConfirmComplete(true)}>
-              {t("action.completeTrip")}
-            </button>
+            <div className="form-actions" style={{ marginTop: 16 }}>
+              <button className="ms-btn ms-btn-accent" onClick={() => setConfirmComplete(true)}>
+                {t("action.completeTrip")}
+              </button>
+            </div>
           ) : (
-            <div className="ms-card list-card" style={{ marginTop: 16 }}>
+            <div className="ms-card form-card" style={{ marginTop: 16 }}>
               <label className="ms-field">
                 <span className="ms-label">{t("trip.reopenReason")}</span>
                 <input value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} />
               </label>
-              <button className="ms-btn ms-btn-ghost" disabled={reopenReason.length < 3} onClick={() => void reopen()}>
-                {t("action.reopen")}
-              </button>
+              <div className="form-actions">
+                <button className="ms-btn ms-btn-ghost" disabled={reopenReason.length < 3} onClick={() => void reopen()}>
+                  {t("action.reopen")}
+                </button>
+              </div>
             </div>
           )}
           <p>

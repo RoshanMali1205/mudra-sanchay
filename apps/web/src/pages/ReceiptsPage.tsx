@@ -117,8 +117,10 @@ export function ReceiptsPage() {
   if (isNew) {
     return (
       <section>
-        <h1>{t("receipt.new")}</h1>
-        <form className="ms-card list-card" onSubmit={(event) => void onUpload(event)}>
+        <header className="page-header">
+          <h1>{t("receipt.new")}</h1>
+        </header>
+        <form className="ms-card form-card" onSubmit={(event) => void onUpload(event)}>
           <label className="ms-field">
             <span className="ms-label">{t("receipt.new")}</span>
             <input name="file" type="file" accept="image/jpeg,image/png,application/pdf" capture="environment" required />
@@ -146,9 +148,11 @@ export function ReceiptsPage() {
             </select>
           </label>
           <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
-          <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
-            {t("action.save")}
-          </button>
+          <div className="form-actions">
+            <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
+              {t("action.save")}
+            </button>
+          </div>
         </form>
       </section>
     );
@@ -157,21 +161,26 @@ export function ReceiptsPage() {
   if (current) {
     return (
       <section>
-        <h1>{current.fileName}</h1>
+        <header className="page-header">
+          <h1>{current.fileName}</h1>
+          <StatusChip label={current.paymentStatus} />
+        </header>
         {current.mimeType.startsWith("image/") ? (
           <img
+            className="scene-photo"
             src={current.previewDataUrl}
             alt={current.fileName}
-            style={{ width: "100%", maxHeight: 320, objectFit: "contain", transform: `rotate(${rotation}deg)` }}
+            style={{ maxHeight: 320, objectFit: "contain", transform: `rotate(${rotation}deg)`, marginBottom: 12 }}
           />
         ) : (
           <p className="muted">PDF</p>
         )}
-        <button className="ms-btn ms-btn-ghost" onClick={() => setRotation((value) => value + 90)}>
-          {t("receipt.zoom")}
-        </button>
-        <StatusChip label={current.paymentStatus} />
-        <form className="ms-card list-card" onSubmit={(event) => void saveDetails(event)}>
+        <div className="toolbar-row" style={{ marginBottom: 14 }}>
+          <button className="ms-btn ms-btn-ghost" onClick={() => setRotation((value) => value + 90)}>
+            {t("receipt.zoom")}
+          </button>
+        </div>
+        <form className="ms-card form-card" onSubmit={(event) => void saveDetails(event)}>
           <label className="ms-field">
             <span className="ms-label">{t("farmer.name")}</span>
             <select name="farmerId" defaultValue={current.farmerId}>
@@ -194,17 +203,30 @@ export function ReceiptsPage() {
             <span className="ms-label">{t("receipt.net")}</span>
             <input name="net" type="number" min={0} step="0.01" defaultValue={current.netAmountPaise / 100} />
           </label>
-          <button className="ms-btn ms-btn-primary">{t("action.save")}</button>
+          <div className="form-actions">
+            <button className="ms-btn ms-btn-primary">{t("action.save")}</button>
+          </div>
         </form>
-        <form className="ms-card list-card" onSubmit={(event) => void addPayment(event)}>
-          <h2>{t("receipt.recordPayment")}</h2>
-          <input name="eventDate" type="date" required />
-          <input name="amount" type="number" min={1} step="0.01" required />
-          <select name="mode" defaultValue="cash">
-            <option value="cash">Cash</option>
-            <option value="upi">UPI</option>
-          </select>
-          <button className="ms-btn ms-btn-accent">{t("action.save")}</button>
+        <form className="ms-card form-card" style={{ marginTop: 14 }} onSubmit={(event) => void addPayment(event)}>
+          <h2 style={{ margin: 0 }}>{t("receipt.recordPayment")}</h2>
+          <label className="ms-field">
+            <span className="ms-label">{t("trip.date")}</span>
+            <input name="eventDate" type="date" required />
+          </label>
+          <label className="ms-field">
+            <span className="ms-label">{t("payment.amount")}</span>
+            <input name="amount" type="number" min={1} step="0.01" required />
+          </label>
+          <label className="ms-field">
+            <span className="ms-label">{t("payment.mode")}</span>
+            <select name="mode" defaultValue="cash">
+              <option value="cash">Cash</option>
+              <option value="upi">UPI</option>
+            </select>
+          </label>
+          <div className="form-actions">
+            <button className="ms-btn ms-btn-accent">{t("action.save")}</button>
+          </div>
         </form>
         {overpayBody ? (
           <ConfirmDialog
@@ -235,17 +257,22 @@ export function ReceiptsPage() {
         </Link>
       </header>
       {receipts.length === 0 ? (
-        <EmptyState title={t("receipt.list")} body={t("receipt.new")} />
+        <EmptyState title={t("receipt.list")} body={t("receipt.new")} imageSrc="/images/tile-receipt.svg" />
       ) : (
-        receipts.map((receipt) => (
-          <Link key={receipt.id} to={`/receipts/${receipt.id}`} className="list-card ms-card" style={{ display: "block", marginBottom: 10 }}>
-            <div className="row-between">
-              <strong>{receipt.farmerName ?? receipt.fileName}</strong>
-              <StatusChip label={receipt.paymentStatus} />
-            </div>
-            <p className="muted">{formatInrFromPaise(receipt.netAmountPaise)}</p>
-          </Link>
-        ))
+        <div className="stack-list">
+          {receipts.map((receipt) => (
+            <Link key={receipt.id} to={`/receipts/${receipt.id}`} className="ms-card entity-card">
+              <img className="entity-card-media" src="/images/tile-receipt.svg" alt="" />
+              <div className="entity-card-body">
+                <div className="row-between">
+                  <strong>{receipt.farmerName ?? receipt.fileName}</strong>
+                  <StatusChip label={receipt.paymentStatus} />
+                </div>
+                <p className="muted">{formatInrFromPaise(receipt.netAmountPaise)}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
       )}
     </section>
   );

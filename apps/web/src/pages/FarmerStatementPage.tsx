@@ -25,7 +25,7 @@ export function FarmerStatementPage() {
     () => resolveDateRange(preset, from, to),
     [preset, from, to]
   );
-  const { data } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["farmer-statement", farmerId, range.from, range.to],
     enabled: Boolean(farmerId),
     queryFn: () =>
@@ -36,7 +36,10 @@ export function FarmerStatementPage() {
 
   const [busy, setBusy] = useState<"pdf" | "share" | null>(null);
 
-  if (!data) return <p>Loading…</p>;
+  if (isLoading) return <p className="muted">Loading…</p>;
+  if (isError || !data) {
+    return <p className="ms-error">{error instanceof Error ? error.message : t("status.error")}</p>;
+  }
   const { farmer, ledger } = data;
   const message = `Namaskar ${farmer.fullName}, ${range.from} to ${range.to} cha Radhe Krishna Transport statement sobat pathavla aahe. Baki rakkam: ${formatInrFromPaise(farmer.outstandingPaise)}.`;
   const pdfLabels = {
@@ -101,7 +104,7 @@ export function FarmerStatementPage() {
             custom: t("range.custom")
           }}
         />
-        <div className="chip-row">
+        <div className="toolbar-row">
           <button className="ms-btn ms-btn-primary" disabled={busy !== null} onClick={() => void exportPdf()}>
             {busy === "pdf" ? t("status.saving") : t("action.pdf")}
           </button>
@@ -122,21 +125,27 @@ export function FarmerStatementPage() {
           <p>
             {farmer.fullName} · {farmer.farmerCode} · {farmer.village}
           </p>
-          <p className="report-period" style={{ marginTop: 10 }}>
+          <p className="report-period" style={{ marginTop: 12 }}>
             {range.from} → {range.to} · {i18n.language}
           </p>
         </header>
         <div className="statement-body">
-          <div className="report-summary-band" style={{ marginBottom: 16 }}>
-            <div className="report-summary-item">
-              <span>{t("farmer.outstandingBalance")}</span>
-              <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
-                {formatInrFromPaise(farmer.outstandingPaise)}
-              </strong>
+          <div className="statement-summary-grid">
+            <div className="report-summary-item photo">
+              <img src="/images/tile-payment.svg" alt="" />
+              <div>
+                <span>{t("farmer.outstandingBalance")}</span>
+                <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
+                  {formatInrFromPaise(farmer.outstandingPaise)}
+                </strong>
+              </div>
             </div>
-            <div className="report-summary-item">
-              <span>{t("farmer.mobile")}</span>
-              <strong>{farmer.mobile || "—"}</strong>
+            <div className="report-summary-item photo">
+              <img src="/images/tile-farmer.svg" alt="" />
+              <div>
+                <span>{t("farmer.mobile")}</span>
+                <strong>{farmer.mobile || "—"}</strong>
+              </div>
             </div>
           </div>
           <div className="report-table-wrap">
@@ -163,7 +172,7 @@ export function FarmerStatementPage() {
               </tbody>
             </table>
           </div>
-          <footer className="report-footer" style={{ marginTop: 16, padding: 0, border: 0, background: "transparent" }}>
+          <footer className="report-footer" style={{ marginTop: 0, padding: "4px 0 0", border: 0, background: "transparent" }}>
             <p className="muted">{DEVELOPER_FOOTER}</p>
           </footer>
         </div>

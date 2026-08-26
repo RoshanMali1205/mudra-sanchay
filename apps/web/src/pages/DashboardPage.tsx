@@ -43,10 +43,6 @@ export function DashboardPage() {
             <p>{t("app.brand")}</p>
           </figcaption>
         </figure>
-        <div className="photo-strip" aria-hidden="false">
-          <img src="/images/tomato-crates.png" alt="Tomato crates" />
-          <img src="/images/tomato-crate-square.png" alt="Fresh tomatoes" />
-        </div>
         <DateRangePicker
           preset={preset}
           onPreset={(value) => {
@@ -137,51 +133,54 @@ export function DashboardPage() {
         />
       </div>
       {sheet?.farmers?.length ? (
-        <div style={{ marginTop: 16 }}>
+        <div className="section-block">
           <h2>{range.label === "today" ? t("dashboard.farmersToday") : t("dashboard.dayFarmers")}</h2>
-          {sheet.farmers.map((farmer) => (
-            <Link
-              key={farmer.farmerId}
-              to={`/farmers/${farmer.farmerId}`}
-              className="list-card ms-card"
-              style={{ marginTop: 12, display: "block" }}
-            >
-              <div className="row-between">
-                <strong>{farmer.fullName}</strong>
-                <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
-                  {money(farmer.outstandingPaise)}
-                </strong>
-              </div>
-              <p className="muted">
-                {farmer.village}
-                {` · ${farmer.crates} ${t("trip.crates")}`}
-                {` · ${money(farmer.freightPaise)}`}
-              </p>
-            </Link>
-          ))}
+          <div className="stack-list">
+            {sheet.farmers.map((farmer) => (
+              <Link key={farmer.farmerId} to={`/farmers/${farmer.farmerId}`} className="ms-card entity-card">
+                <img className="entity-card-media" src="/images/tile-farmer.svg" alt="" />
+                <div className="entity-card-body">
+                  <div className="row-between">
+                    <strong>{farmer.fullName}</strong>
+                    <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
+                      {money(farmer.outstandingPaise)}
+                    </strong>
+                  </div>
+                  <p className="muted">
+                    {farmer.village}
+                    {` · ${farmer.crates} ${t("trip.crates")}`}
+                    {` · ${money(farmer.freightPaise)}`}
+                  </p>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       ) : null}
-      <div className="quick-grid" style={{ marginTop: 16 }}>
-        <Link className="action-card action-card-primary" to="/trips/new">
-          <img className="action-card-media" src="/images/tile-trip.svg" alt="" />
-          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
-          <p className="action-card-label">{t("trip.new")}</p>
-        </Link>
-        <Link className="action-card action-card-primary" to="/farmers/new">
-          <img className="action-card-media" src="/images/tile-farmer.svg" alt="" />
-          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
-          <p className="action-card-label">{t("farmer.new")}</p>
-        </Link>
-        <Link className="action-card action-card-accent" to="/payments/new">
-          <img className="action-card-media" src="/images/tile-payment.svg" alt="" />
-          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
-          <p className="action-card-label">{t("payment.new")}</p>
-        </Link>
-        <Link className="action-card action-card-accent" to="/expenses/new">
-          <img className="action-card-media" src="/images/tile-expense.svg" alt="" />
-          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
-          <p className="action-card-label">{t("expense.new")}</p>
-        </Link>
+      <div className="section-block">
+        <h2>{t("dashboard.quickActions")}</h2>
+        <div className="quick-grid">
+          <Link className="action-card action-card-primary" to="/trips/new">
+            <img className="action-card-media" src="/images/tile-trip.svg" alt="" />
+            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+            <p className="action-card-label">{t("trip.new")}</p>
+          </Link>
+          <Link className="action-card action-card-primary" to="/farmers/new">
+            <img className="action-card-media" src="/images/tile-farmer.svg" alt="" />
+            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+            <p className="action-card-label">{t("farmer.new")}</p>
+          </Link>
+          <Link className="action-card action-card-accent" to="/payments/new">
+            <img className="action-card-media" src="/images/tile-payment.svg" alt="" />
+            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+            <p className="action-card-label">{t("payment.new")}</p>
+          </Link>
+          <Link className="action-card action-card-accent" to="/expenses/new">
+            <img className="action-card-media" src="/images/tile-expense.svg" alt="" />
+            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+            <p className="action-card-label">{t("expense.new")}</p>
+          </Link>
+        </div>
       </div>
       {data && data.trips === 0 ? (
         <div style={{ marginTop: 16 }}>

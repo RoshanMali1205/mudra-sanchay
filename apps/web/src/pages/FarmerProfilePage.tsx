@@ -64,7 +64,7 @@ export function FarmerProfilePage() {
           imageAlt=""
         />
       </div>
-      <div className="chip-row" style={{ margin: "16px 0" }}>
+      <div className="toolbar-row" style={{ marginTop: 16 }}>
         <Link className="ms-btn ms-btn-primary" to={`/payments/new?farmerId=${farmer.id}`}>
           {t("payment.new")}
         </Link>
@@ -75,15 +75,20 @@ export function FarmerProfilePage() {
           {farmer.active ? t("action.archive") : t("action.restore")}
         </button>
       </div>
-      {ledger.map((line) => (
-        <article key={line.id} className="list-card ms-card" style={{ marginBottom: 10 }}>
-          <div className="row-between">
-            <strong>{line.date}</strong>
-            <span>{formatInrFromPaise(line.runningBalancePaise)}</span>
-          </div>
-          <p className="muted">{line.description}</p>
-        </article>
-      ))}
+      <div className="section-block">
+        <h2>{t("farmer.statement")}</h2>
+        <div className="stack-list">
+          {ledger.map((line) => (
+            <article key={line.id} className="ms-card list-card">
+              <div className="row-between">
+                <strong>{line.date}</strong>
+                <span>{formatInrFromPaise(line.runningBalancePaise)}</span>
+              </div>
+              <p className="muted">{line.description}</p>
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }
