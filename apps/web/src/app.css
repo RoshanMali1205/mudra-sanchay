@@ -244,20 +244,67 @@ a.list-card:hover,
 }
 
 .action-card {
-  min-height: 72px;
+  position: relative;
+  min-height: 96px;
   display: grid;
-  place-items: center;
-  padding: 14px 12px;
+  align-content: end;
+  justify-items: start;
+  gap: 4px;
+  padding: 16px 14px;
   border-radius: var(--radius-card);
   text-decoration: none;
   font-weight: 800;
   letter-spacing: 0.01em;
   border: 1px solid transparent;
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  overflow: hidden;
+  isolation: isolate;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .action-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
+}
+
+.action-card-media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  transition: transform 0.35s ease;
+}
+
+.action-card:hover .action-card-media {
+  transform: scale(1.06);
+}
+
+.action-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.05), rgba(15, 23, 42, 0.78));
+}
+
+.action-card > * {
+  position: relative;
+  z-index: 2;
+}
+
+.action-card-kicker {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.action-card-label {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.25;
 }
 
 .action-card-primary {
@@ -267,9 +314,324 @@ a.list-card:hover,
 }
 
 .action-card-accent {
-  color: #1f2937;
-  background: linear-gradient(165deg, #fcd34d, var(--color-accent));
+  color: #ffffff;
+  background: linear-gradient(165deg, #f59e0b, #b45309);
   box-shadow: 0 10px 22px rgba(245, 158, 11, 0.26);
+}
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.image-tile {
+  position: relative;
+  min-height: 132px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  text-decoration: none;
+  color: #ffffff;
+  display: grid;
+  align-content: end;
+  padding: 14px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  isolation: isolate;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  animation: rise-in 0.45s ease both;
+}
+
+.image-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.image-tile img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  transition: transform 0.35s ease;
+}
+
+.image-tile:hover img {
+  transform: scale(1.07);
+}
+
+.image-tile::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.1), rgba(15, 23, 42, 0.82));
+}
+
+.image-tile strong,
+.image-tile span {
+  position: relative;
+  z-index: 2;
+}
+
+.image-tile strong {
+  font-size: 1.02rem;
+  letter-spacing: -0.01em;
+}
+
+.image-tile span {
+  margin-top: 2px;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.report-sheet {
+  margin-top: 8px;
+  padding: 0;
+  overflow: hidden;
+  animation: rise-in 0.5s ease both;
+}
+
+.report-letterhead {
+  position: relative;
+  padding: 22px 20px 20px;
+  color: #ffffff;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.92), rgba(17, 94, 89, 0.88)),
+    url("/images/farm-fields.png") center / cover no-repeat;
+  overflow: hidden;
+}
+
+.report-letterhead::before {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 160px;
+  height: 160px;
+  border-radius: 50%;
+  background: rgba(245, 158, 11, 0.22);
+}
+
+.report-letterhead-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 10px;
+}
+
+.report-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.report-brand-row img {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 4px;
+}
+
+.report-letterhead h1 {
+  margin: 0;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.report-letterhead p {
+  margin: 0;
+}
+
+.report-period {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  font-size: 0.86rem;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.report-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 16px;
+  background: #f8fbfb;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.report-body {
+  padding: 16px;
+  display: grid;
+  gap: 18px;
+}
+
+.report-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.report-section-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.report-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.report-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.report-table th {
+  background: #0f766e;
+  color: #ffffff;
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.report-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #e6efee;
+  vertical-align: top;
+}
+
+.report-table tbody tr:nth-child(even) {
+  background: #f7fbfb;
+}
+
+.report-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.report-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.report-summary-band {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.report-summary-item {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f4faf9;
+  border: 1px solid #d7e3e2;
+}
+
+.report-summary-item span {
+  display: block;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.report-summary-item strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 1.05rem;
+}
+
+.report-footer {
+  padding: 14px 16px 18px;
+  border-top: 1px solid var(--color-border);
+  background: #fbfcfc;
+}
+
+.statement .print-sheet {
+  padding: 0;
+  overflow: hidden;
+}
+
+.statement-letterhead {
+  padding: 20px;
+  color: #ffffff;
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.94), rgba(17, 94, 89, 0.86)),
+    url("/images/tomato-crates.png") center / cover no-repeat;
+}
+
+.statement-letterhead h2,
+.statement-letterhead p {
+  margin: 0;
+}
+
+.statement-letterhead h2 {
+  font-size: 1.25rem;
+}
+
+.statement-body {
+  padding: 16px;
+}
+
+.statement-meta {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.metric-grid > *,
+.quick-grid > *,
+.tile-grid > * {
+  animation: rise-in 0.45s ease both;
+}
+
+.metric-grid > *:nth-child(2),
+.quick-grid > *:nth-child(2),
+.tile-grid > *:nth-child(2) {
+  animation-delay: 0.04s;
+}
+
+.metric-grid > *:nth-child(3),
+.quick-grid > *:nth-child(3),
+.tile-grid > *:nth-child(3) {
+  animation-delay: 0.08s;
+}
+
+.metric-grid > *:nth-child(4),
+.quick-grid > *:nth-child(4),
+.tile-grid > *:nth-child(4) {
+  animation-delay: 0.12s;
+}
+
+.hero-scene {
+  animation: rise-in 0.5s ease both;
 }
 
 .chip {
@@ -433,8 +795,30 @@ a.list-card:hover,
   }
 
   .hero-scene,
-  .photo-strip {
+  .photo-strip,
+  .report-toolbar,
+  .quick-grid,
+  .tile-grid {
     display: none;
+  }
+
+  .report-sheet,
+  .print-sheet {
+    box-shadow: none;
+    border: 0;
+  }
+
+  .report-letterhead,
+  .statement-letterhead {
+    color: #115e59;
+    background: #e8f3f2 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .report-table th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }
 
@@ -467,7 +851,12 @@ a.list-card:hover,
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .quick-grid {
+  .quick-grid,
+  .tile-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .report-summary-band {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
@@ -477,5 +866,9 @@ a.list-card:hover,
 
   .photo-strip img {
     height: 160px;
+  }
+
+  .image-tile {
+    min-height: 150px;
   }
 }

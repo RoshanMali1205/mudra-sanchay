@@ -136,6 +136,11 @@
   "receipt.overpay": "This is more than the net payable. Confirm overpayment?",
   "receipt.zoom": "Zoom / rotate",
   "reports.title": "Reports",
+  "reports.subtitle": "Professional period summary for freight, expenses and farmer dues.",
+  "reports.businessReport": "Business performance report",
+  "reports.period": "Period",
+  "reports.emptySheet": "No farmer trip activity in this period.",
+  "reports.emptyDues": "No outstanding farmer balances.",
   "reports.income": "Freight income",
   "reports.expenses": "Expenses",
   "reports.outstanding": "Outstanding",
@@ -152,9 +157,15 @@
   "status.saving": "Saving…",
   "status.error": "Could not save. Check the network and try again. This was not finalized.",
   "more.title": "More",
+  "more.subtitle": "Manage expenses, receipts, payments and settings.",
   "more.expenses": "Expenses",
+  "more.expensesHint": "Diesel, repairs and more",
   "more.receipts": "Receipts",
+  "more.receiptsHint": "Market bill uploads",
   "more.payments": "Payments",
+  "more.paymentsHint": "Record farmer cash",
   "more.settings": "Settings",
-  "more.audit": "Audit trail"
+  "more.settingsHint": "Business and language",
+  "more.audit": "Audit trail",
+  "more.auditHint": "Who changed what"
 }
