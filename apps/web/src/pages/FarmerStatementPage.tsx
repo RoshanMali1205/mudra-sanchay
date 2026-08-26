@@ -162,11 +162,17 @@ export function FarmerStatementPage() {
               <tbody>
                 {ledger.map((line) => (
                   <tr key={line.id}>
-                    <td>{line.date}</td>
-                    <td>{line.description}</td>
-                    <td className="num">{line.crates ?? ""}</td>
-                    <td className="num">{formatInrFromPaise(line.debitPaise || line.creditPaise)}</td>
-                    <td className="num">{formatInrFromPaise(line.runningBalancePaise)}</td>
+                    <td data-label={t("trip.date")}>{line.date}</td>
+                    <td data-label={t("nav.trips")}>{line.description}</td>
+                    <td className="num" data-label={t("trip.crates")}>
+                      {line.crates ?? ""}
+                    </td>
+                    <td className="num" data-label={t("payment.amount")}>
+                      {formatInrFromPaise(line.debitPaise || line.creditPaise)}
+                    </td>
+                    <td className="num" data-label={t("payment.balance")}>
+                      {formatInrFromPaise(line.runningBalancePaise)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
