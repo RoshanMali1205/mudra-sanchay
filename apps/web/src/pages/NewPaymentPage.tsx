@@ -71,7 +71,7 @@ export function NewPaymentPage() {
           </p>
         ) : null}
       </header>
-      <form className="ms-card list-card" onSubmit={onSubmit}>
+      <form className="ms-card form-card" onSubmit={onSubmit}>
         <label className="ms-field">
           <span className="ms-label">{t("farmer.name")}</span>
           <select name="farmerId" defaultValue={selectedId} required>
@@ -100,27 +100,36 @@ export function NewPaymentPage() {
           </select>
         </label>
         <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
-        <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
-          {t("action.save")}
-        </button>
+        <div className="form-actions">
+          <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
+            {t("action.save")}
+          </button>
+        </div>
       </form>
-      <h2>{t("payment.list")}</h2>
-      {payments.map((payment) => (
-        <article key={payment.id} className="list-card ms-card" style={{ marginBottom: 10 }}>
-          <div className="row-between">
-            <strong>
-              {payment.farmerName} · {formatInrFromPaise(payment.amountPaise)}
-            </strong>
-            <button className="ms-btn ms-btn-ghost" onClick={() => setCorrecting(payment)}>
-              {t("payment.correct")}
-            </button>
-          </div>
-          <p className="muted">
-            {payment.paymentDate} · {payment.mode}
-            {payment.correctionReason ? ` · ${payment.correctionReason}` : ""}
-          </p>
-        </article>
-      ))}
+      <div className="section-block">
+        <h2>{t("payment.list")}</h2>
+        <div className="stack-list">
+          {payments.map((payment) => (
+            <article key={payment.id} className="ms-card entity-card">
+              <img className="entity-card-media" src="/images/tile-payment.svg" alt="" />
+              <div className="entity-card-body">
+                <div className="row-between">
+                  <strong>
+                    {payment.farmerName} · {formatInrFromPaise(payment.amountPaise)}
+                  </strong>
+                  <button className="ms-btn ms-btn-ghost" onClick={() => setCorrecting(payment)}>
+                    {t("payment.correct")}
+                  </button>
+                </div>
+                <p className="muted">
+                  {payment.paymentDate} · {payment.mode}
+                  {payment.correctionReason ? ` · ${payment.correctionReason}` : ""}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
       {pending ? (
         <ConfirmDialog
           title={t("payment.new")}

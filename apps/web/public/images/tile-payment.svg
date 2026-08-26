@@ -8,7 +8,7 @@
   <rect width="320" height="200" fill="url(#gold)"/>
   <ellipse cx="160" cy="108" rx="70" ry="70" fill="#fef3c7"/>
   <ellipse cx="160" cy="108" rx="54" ry="54" fill="#fde68a"/>
-  <text x="160" y="122" text-anchor="middle" font-family="Noto Sans, Segoe UI, sans-serif" font-size="48" font-weight="800" fill="#92400e">¹</text>
+  <path d="M148 86h24c10 0 18 8 18 18s-8 18-18 18h-10v14h-14V86zm14 14v10h10c3 0 5-2 5-5s-2-5-5-5h-10z" fill="#92400e"/>
   <circle cx="54" cy="46" r="10" fill="#fff7ed" opacity="0.55"/>
   <circle cx="268" cy="160" r="14" fill="#fff7ed" opacity="0.4"/>
 </svg>

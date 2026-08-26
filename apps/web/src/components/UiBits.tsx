@@ -69,14 +69,15 @@ export function DateRangePicker({
 }) {
   const presets = ["today", "week", "month", "quarter", "half_year", "year", "custom"];
   return (
-    <div className="range-picker">
-      <div className="chip-row">
+    <div className="range-picker filters-panel">
+      <div className="chip-row" role="group" aria-label="Date range">
         {presets.map((item) => (
           <button
             key={item}
             type="button"
             className={preset === item ? "chip active" : "chip"}
             onClick={() => onPreset(item)}
+            aria-pressed={preset === item}
           >
             {labels[item] ?? item}
           </button>
@@ -84,8 +85,14 @@ export function DateRangePicker({
       </div>
       {preset === "custom" ? (
         <div className="row-between">
-          <input type="date" value={from} onChange={(event) => onFrom(event.target.value)} />
-          <input type="date" value={to} onChange={(event) => onTo(event.target.value)} />
+          <label className="ms-field">
+            <span className="ms-label">From</span>
+            <input type="date" value={from} onChange={(event) => onFrom(event.target.value)} />
+          </label>
+          <label className="ms-field">
+            <span className="ms-label">To</span>
+            <input type="date" value={to} onChange={(event) => onTo(event.target.value)} />
+          </label>
         </div>
       ) : null}
     </div>

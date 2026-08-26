@@ -156,27 +156,120 @@ a.ms-btn-ghost:hover {
 
 .ms-field {
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
-.ms-field input,
+.ms-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 .ms-field select,
-.ms-field textarea {
+.ms-field textarea,
+.ms-control,
+input.ms-control:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+select.ms-control,
+textarea.ms-control,
+.search-input,
+.range-picker input[type="date"],
+.form-grid input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.form-grid select,
+.form-grid textarea {
   min-height: var(--touch);
   width: 100%;
   border: 1px solid var(--color-border);
-  border-radius: 12px;
-  padding: 10px 12px;
-  background: white;
+  border-radius: 14px;
+  padding: 11px 14px;
+  background: #ffffff;
+  color: var(--color-text);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+.ms-field select,
+select.ms-control,
+.form-grid select {
+  appearance: none;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--color-primary-strong) 50%),
+    linear-gradient(135deg, var(--color-primary-strong) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 40px;
+}
+
+.ms-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):hover,
+.ms-field select:hover,
+.ms-field textarea:hover,
+.ms-control:hover,
+.search-input:hover,
+.range-picker input[type="date"]:hover,
+.form-grid input:not([type="file"]):hover,
+.form-grid select:hover,
+.form-grid textarea:hover {
+  border-color: #b7d4d1;
+}
+
+.ms-field input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):focus,
+.ms-field select:focus,
+.ms-field textarea:focus,
+.ms-control:focus,
+.search-input:focus,
+.range-picker input[type="date"]:focus,
+.form-grid input:not([type="file"]):focus,
+.form-grid select:focus,
+.form-grid textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.16);
+}
+
+.ms-field input[type="file"],
+.form-grid input[type="file"] {
+  min-height: var(--touch);
+  width: 100%;
+  border: 1px dashed var(--color-border);
+  border-radius: 14px;
+  padding: 12px;
+  background: #f8fbfb;
+}
+
+.ms-field textarea,
+textarea.ms-control {
+  min-height: 96px;
+  resize: vertical;
 }
 
 .ms-label {
   color: var(--color-muted);
-  font-size: 0.92rem;
-  font-weight: 600;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .ms-error {
   color: var(--color-danger);
   font-size: 0.9rem;
+}
+
+.ms-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ms-check input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  accent-color: var(--color-primary);
+  border-radius: 6px;
+}
+
+.ms-btn,
+a.ms-btn {
+  white-space: nowrap;
 }
