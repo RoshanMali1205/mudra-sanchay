@@ -4,6 +4,12 @@
   position: relative;
   overflow: hidden;
   isolation: isolate;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .metric-card::before {
@@ -14,6 +20,7 @@
   bottom: 0;
   width: 5px;
   background: var(--color-primary);
+  z-index: 1;
 }
 
 .metric-income::before {
@@ -28,6 +35,53 @@
   background: var(--color-accent);
 }
 
+.metric-card-photo {
+  min-height: 148px;
+  padding: 0;
+  color: #ffffff;
+  display: grid;
+  align-items: end;
+}
+
+.metric-card-photo::before {
+  width: 0;
+}
+
+.metric-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  transform: scale(1.02);
+  transition: transform 0.35s ease;
+}
+
+.metric-card-photo:hover .metric-photo {
+  transform: scale(1.08);
+}
+
+.metric-card-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.08) 0%, rgba(15, 23, 42, 0.72) 100%),
+    linear-gradient(120deg, rgba(15, 118, 110, 0.35), transparent 55%);
+}
+
+.metric-body {
+  position: relative;
+  z-index: 2;
+  padding: 16px 16px 18px;
+}
+
+.metric-card-photo .metric-body {
+  padding: 18px 16px 16px;
+}
+
 .metric-label,
 .metric-hint {
   margin: 0;
@@ -36,11 +90,21 @@
   font-weight: 600;
 }
 
+.metric-card-photo .metric-label,
+.metric-card-photo .metric-hint {
+  color: rgba(255, 255, 255, 0.86);
+}
+
 .metric-value {
   margin: 10px 0 0;
   font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: -0.02em;
+}
+
+.metric-card-photo .metric-value {
+  color: #ffffff;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.28);
 }
 
 .metric-hint {
@@ -59,6 +123,13 @@
 
 .metric-accent .metric-value {
   color: var(--color-primary-strong);
+}
+
+.metric-card-photo.metric-income .metric-value,
+.metric-card-photo.metric-expense .metric-value,
+.metric-card-photo.metric-accent .metric-value,
+.metric-card-photo.metric-default .metric-value {
+  color: #ffffff;
 }
 
 .status-chip {
@@ -110,13 +181,4 @@
 
 .empty-state p {
   color: var(--color-muted);
-}
-
-.empty-photo {
-  width: 120px;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 18px;
-  margin: 0 auto 12px;
-  display: block;
 }

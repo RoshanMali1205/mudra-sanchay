@@ -36,10 +36,33 @@ export function FarmerProfilePage() {
         </p>
       </header>
       <div className="metric-grid">
-        <MetricCard label={t("trip.crates")} value={String(farmer.totalCrates)} />
-        <MetricCard label={t("dashboard.todayIncome")} value={formatInrFromPaise(farmer.freightPaise)} tone="income" />
-        <MetricCard label={t("dashboard.received")} value={formatInrFromPaise(farmer.paidPaise)} />
-        <MetricCard label={t("farmer.outstandingBalance")} value={formatInrFromPaise(farmer.outstandingPaise)} tone="accent" />
+        <MetricCard
+          label={t("trip.crates")}
+          value={String(farmer.totalCrates)}
+          imageSrc="/images/tomato-crate-square.png"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("dashboard.todayIncome")}
+          value={formatInrFromPaise(farmer.freightPaise)}
+          tone="income"
+          imageSrc="/images/farm-fields.png"
+          imageAlt=""
+          imagePosition="center 35%"
+        />
+        <MetricCard
+          label={t("dashboard.received")}
+          value={formatInrFromPaise(farmer.paidPaise)}
+          imageSrc="/images/tile-payment.svg"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("farmer.outstandingBalance")}
+          value={formatInrFromPaise(farmer.outstandingPaise)}
+          tone="accent"
+          imageSrc="/images/tomato-crates.png"
+          imageAlt=""
+        />
       </div>
       <div className="chip-row" style={{ margin: "16px 0" }}>
         <Link className="ms-btn ms-btn-primary" to={`/payments/new?farmerId=${farmer.id}`}>

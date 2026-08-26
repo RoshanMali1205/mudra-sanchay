@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   DEVELOPER_FOOTER,
+  PRINT_BRAND,
   formatInrFromPaise,
   kolkataToday,
   resolveDateRange,
@@ -57,10 +58,14 @@ export function ReportsPage() {
     dues: t("reports.dues")
   };
 
+  const farmers = sheet?.farmers ?? [];
+  const periodLabel = `${range.from} → ${range.to}`;
+
   return (
     <section>
-      <header className="page-header">
+      <header className="page-header no-print">
         <h1>{t("reports.title")}</h1>
+        <p className="muted">{t("reports.subtitle")}</p>
         <DateRangePicker
           preset={preset}
           onPreset={(value) => {
@@ -84,109 +89,256 @@ export function ReportsPage() {
           }}
         />
       </header>
-      <div className="metric-grid">
-        <MetricCard label={t("reports.income")} value={formatInrFromPaise(data?.freightPaise ?? 0)} tone="income" />
-        <MetricCard label={t("reports.expenses")} value={formatInrFromPaise(data?.expensesPaise ?? 0)} tone="expense" />
-        <MetricCard label={t("reports.outstanding")} value={formatInrFromPaise(data?.outstandingPaise ?? 0)} />
-        <MetricCard label={t("reports.profit")} value={formatInrFromPaise(data?.accrualProfitPaise ?? 0)} tone="accent" hint={t("dashboard.accrualHint")} />
-        <MetricCard label={t("trip.farmersCount")} value={String(sheet?.farmerCount ?? data?.farmerCount ?? 0)} />
-      </div>
-      <div className="chip-row" style={{ marginTop: 16 }}>
-        <button
-          className="ms-btn ms-btn-primary"
-          disabled={exporting}
-          onClick={() => {
-            setExporting(true);
-            void downloadPdf(reportPdfDocument(data, outstanding, range.from, range.to, exportLabels, sheet)).finally(
-              () => setExporting(false)
-            );
-          }}
-        >
-          {exporting ? t("status.saving") : t("action.pdf")}
-        </button>
-        <button
-          className="ms-btn ms-btn-accent"
-          onClick={() =>
-            downloadExcel("mudra-sanchay-report", [
-              {
-                name: "Summary",
-                rows: [
-                  ["From", range.from],
-                  ["To", range.to],
-                  ["Income", (data?.freightPaise ?? 0) / 100],
-                  ["Received", (data?.receivedPaise ?? 0) / 100],
-                  ["Expenses", (data?.expensesPaise ?? 0) / 100],
-                  ["Accrual profit", (data?.accrualProfitPaise ?? 0) / 100],
-                  ["Cash surplus", (data?.cashSurplusPaise ?? 0) / 100],
-                  ["Farmers", sheet?.farmerCount ?? data?.farmerCount ?? 0],
-                  ["Crates", sheet?.crates ?? data?.crates ?? 0]
-                ]
-              },
-              {
-                name: "Daily farmers",
-                rows: [
-                  ["Farmer", "Code", "Village", "Crates", "Freight", "Due"],
-                  ...(sheet?.farmers ?? []).map((farmer) => [
-                    farmer.fullName,
-                    farmer.farmerCode,
-                    farmer.village,
-                    farmer.crates,
-                    farmer.freightPaise / 100,
-                    farmer.outstandingPaise / 100
-                  ])
-                ]
-              },
-              {
-                name: "Outstanding",
-                rows: [
-                  ["Farmer", "Village", "Balance"],
-                  ...outstanding.map((farmer) => [farmer.fullName, farmer.village, farmer.outstandingPaise / 100])
-                ]
-              }
-            ])
-          }
-        >
-          {t("action.excel")}
-        </button>
-      </div>
-      <h2 style={{ marginTop: 20 }}>{t("reports.daySheet")}</h2>
-      {(sheet?.farmers ?? []).map((farmer) => (
-        <Link
-          key={farmer.farmerId}
-          to={`/farmers/${farmer.farmerId}`}
-          className="list-card ms-card"
-          style={{ marginTop: 10, display: "block" }}
-        >
-          <div className="row-between">
-            <strong>{farmer.fullName}</strong>
-            <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
-              {formatInrFromPaise(farmer.outstandingPaise)}
-            </strong>
-          </div>
-          <p className="muted">
-            {farmer.village}
-            {` · ${farmer.crates} ${t("trip.crates")}`}
-            {` · ${formatInrFromPaise(farmer.freightPaise)}`}
-          </p>
-        </Link>
-      ))}
-      <h2 style={{ marginTop: 20 }}>{t("reports.dues")}</h2>
-      {outstanding.map((farmer) => (
-        <article key={farmer.id} className="list-card ms-card" style={{ marginTop: 10 }}>
-          <div className="row-between">
-            <div>
-              <strong>{farmer.fullName}</strong>
-              {farmer.village ? <p className="muted">{farmer.village}</p> : null}
+
+      <article className="ms-card report-sheet print-sheet">
+        <header className="report-letterhead">
+          <div className="report-letterhead-inner">
+            <div className="report-brand-row">
+              <img src="/logo.svg" alt="" />
+              <div>
+                <h1>{PRINT_BRAND}</h1>
+                <p>{t("reports.businessReport")}</p>
+              </div>
             </div>
-            <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
-              {formatInrFromPaise(farmer.outstandingPaise)}
-            </strong>
+            <span className="report-period">
+              {t("reports.period")}: {periodLabel}
+            </span>
           </div>
-        </article>
-      ))}
-      <p className="muted" style={{ marginTop: 24 }}>
-        {DEVELOPER_FOOTER}
-      </p>
+        </header>
+
+        <div className="report-toolbar no-print">
+          <button
+            className="ms-btn ms-btn-primary"
+            disabled={exporting}
+            onClick={() => {
+              setExporting(true);
+              void downloadPdf(reportPdfDocument(data, outstanding, range.from, range.to, exportLabels, sheet)).finally(
+                () => setExporting(false)
+              );
+            }}
+          >
+            {exporting ? t("status.saving") : t("action.pdf")}
+          </button>
+          <button
+            className="ms-btn ms-btn-accent"
+            onClick={() =>
+              downloadExcel("mudra-sanchay-report", [
+                {
+                  name: "Summary",
+                  rows: [
+                    ["From", range.from],
+                    ["To", range.to],
+                    ["Income", (data?.freightPaise ?? 0) / 100],
+                    ["Received", (data?.receivedPaise ?? 0) / 100],
+                    ["Expenses", (data?.expensesPaise ?? 0) / 100],
+                    ["Accrual profit", (data?.accrualProfitPaise ?? 0) / 100],
+                    ["Cash surplus", (data?.cashSurplusPaise ?? 0) / 100],
+                    ["Farmers", sheet?.farmerCount ?? data?.farmerCount ?? 0],
+                    ["Crates", sheet?.crates ?? data?.crates ?? 0]
+                  ]
+                },
+                {
+                  name: "Daily farmers",
+                  rows: [
+                    ["Farmer", "Code", "Village", "Crates", "Freight", "Due"],
+                    ...farmers.map((farmer) => [
+                      farmer.fullName,
+                      farmer.farmerCode,
+                      farmer.village,
+                      farmer.crates,
+                      farmer.freightPaise / 100,
+                      farmer.outstandingPaise / 100
+                    ])
+                  ]
+                },
+                {
+                  name: "Outstanding",
+                  rows: [
+                    ["Farmer", "Village", "Balance"],
+                    ...outstanding.map((farmer) => [farmer.fullName, farmer.village, farmer.outstandingPaise / 100])
+                  ]
+                }
+              ])
+            }
+          >
+            {t("action.excel")}
+          </button>
+          <button className="ms-btn ms-btn-ghost" onClick={() => window.print()}>
+            {t("action.print")}
+          </button>
+        </div>
+
+        <div className="report-body">
+          <div className="metric-grid">
+            <MetricCard
+              label={t("reports.income")}
+              value={formatInrFromPaise(data?.freightPaise ?? 0)}
+              tone="income"
+              imageSrc="/images/farm-fields.png"
+              imageAlt=""
+              imagePosition="center 30%"
+            />
+            <MetricCard
+              label={t("reports.expenses")}
+              value={formatInrFromPaise(data?.expensesPaise ?? 0)}
+              tone="expense"
+              imageSrc="/images/tile-expense.svg"
+              imageAlt=""
+            />
+            <MetricCard
+              label={t("reports.outstanding")}
+              value={formatInrFromPaise(data?.outstandingPaise ?? 0)}
+              imageSrc="/images/tomato-crates.png"
+              imageAlt=""
+              imagePosition="center 45%"
+            />
+            <MetricCard
+              label={t("reports.profit")}
+              value={formatInrFromPaise(data?.accrualProfitPaise ?? 0)}
+              tone="accent"
+              hint={t("dashboard.accrualHint")}
+              imageSrc="/images/tile-payment.svg"
+              imageAlt=""
+            />
+            <MetricCard
+              label={t("trip.farmersCount")}
+              value={String(sheet?.farmerCount ?? data?.farmerCount ?? 0)}
+              imageSrc="/images/tile-farmer.svg"
+              imageAlt=""
+            />
+            <MetricCard
+              label={t("dashboard.crates")}
+              value={String(sheet?.crates ?? data?.crates ?? 0)}
+              imageSrc="/images/tomato-crate-square.png"
+              imageAlt=""
+            />
+            <MetricCard
+              label={t("dashboard.trips")}
+              value={String(sheet?.trips ?? data?.trips ?? 0)}
+              imageSrc="/images/tile-trip.svg"
+              imageAlt=""
+            />
+            <MetricCard
+              label={t("dashboard.received")}
+              value={formatInrFromPaise(data?.receivedPaise ?? 0)}
+              imageSrc="/images/tile-receipt.svg"
+              imageAlt=""
+            />
+          </div>
+
+          <div className="report-summary-band">
+            <div className="report-summary-item">
+              <span>{t("dashboard.cashSurplus")}</span>
+              <strong>{formatInrFromPaise(data?.cashSurplusPaise ?? 0)}</strong>
+            </div>
+            <div className="report-summary-item">
+              <span>{t("reports.profit")}</span>
+              <strong>{formatInrFromPaise(data?.accrualProfitPaise ?? 0)}</strong>
+            </div>
+            <div className="report-summary-item">
+              <span>{t("reports.outstanding")}</span>
+              <strong className={(data?.outstandingPaise ?? 0) > 0 ? "due-amount" : undefined}>
+                {formatInrFromPaise(data?.outstandingPaise ?? 0)}
+              </strong>
+            </div>
+            <div className="report-summary-item">
+              <span>{t("trip.farmersCount")}</span>
+              <strong>{sheet?.farmerCount ?? data?.farmerCount ?? 0}</strong>
+            </div>
+          </div>
+
+          <section>
+            <div className="report-section-head">
+              <h2>{t("reports.daySheet")}</h2>
+              <p className="muted">
+                {farmers.length} {t("trip.farmersCount")}
+              </p>
+            </div>
+            <div className="report-table-wrap">
+              <table className="report-table">
+                <thead>
+                  <tr>
+                    <th>{t("farmer.name")}</th>
+                    <th>{t("farmer.village")}</th>
+                    <th className="num">{t("trip.crates")}</th>
+                    <th className="num">{t("reports.income")}</th>
+                    <th className="num">{t("payment.balance")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {farmers.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="muted">
+                        {t("reports.emptySheet")}
+                      </td>
+                    </tr>
+                  ) : (
+                    farmers.map((farmer) => (
+                      <tr key={farmer.farmerId}>
+                        <td>
+                          <Link to={`/farmers/${farmer.farmerId}`}>{farmer.fullName}</Link>
+                          <div className="muted">{farmer.farmerCode}</div>
+                        </td>
+                        <td>{farmer.village}</td>
+                        <td className="num">{farmer.crates}</td>
+                        <td className="num">{formatInrFromPaise(farmer.freightPaise)}</td>
+                        <td className={`num ${farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}`}>
+                          {formatInrFromPaise(farmer.outstandingPaise)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section>
+            <div className="report-section-head">
+              <h2>{t("reports.dues")}</h2>
+              <p className="muted">
+                {outstanding.length} {t("trip.farmersCount")}
+              </p>
+            </div>
+            <div className="report-table-wrap">
+              <table className="report-table">
+                <thead>
+                  <tr>
+                    <th>{t("farmer.name")}</th>
+                    <th>{t("farmer.village")}</th>
+                    <th className="num">{t("payment.balance")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outstanding.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="muted">
+                        {t("reports.emptyDues")}
+                      </td>
+                    </tr>
+                  ) : (
+                    outstanding.map((farmer) => (
+                      <tr key={farmer.id}>
+                        <td>
+                          <Link to={`/farmers/${farmer.id}`}>{farmer.fullName}</Link>
+                        </td>
+                        <td>{farmer.village}</td>
+                        <td className={`num ${farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}`}>
+                          {formatInrFromPaise(farmer.outstandingPaise)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+
+        <footer className="report-footer">
+          <p className="muted">{DEVELOPER_FOOTER}</p>
+        </footer>
+      </article>
     </section>
   );
 }

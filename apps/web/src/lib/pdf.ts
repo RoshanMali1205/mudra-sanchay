@@ -17,6 +17,7 @@ export type PdfDocument = {
   title: string;
   subtitle?: string;
   meta?: string[];
+  kpis?: Array<{ label: string; value: string }>;
   columns: PdfColumn[];
   rows: string[][];
   summary?: string[];
@@ -120,9 +121,9 @@ function paginate(rowHeights: number[], usable: number, lastPageExtra: number): 
 function measureHeaderHeight(doc: PdfDocument) {
   const canvas = document.createElement("canvas");
   canvas.width = CANVAS_WIDTH;
-  canvas.height = 200;
+  canvas.height = 900;
   const ctx = canvas.getContext("2d");
-  if (!ctx) return 160;
+  if (!ctx) return 220;
   return drawHeader(ctx, doc);
 }
 
@@ -140,12 +141,15 @@ function drawFooter(ctx: CanvasRenderingContext2D, footer: string, page: number,
 
 function drawHeader(ctx: CanvasRenderingContext2D, doc: PdfDocument) {
   ctx.fillStyle = "#0f766e";
-  ctx.fillRect(0, 0, CANVAS_WIDTH, 10);
+  ctx.fillRect(0, 0, CANVAS_WIDTH, 18);
+  ctx.fillStyle = "#f59e0b";
+  ctx.fillRect(0, 18, CANVAS_WIDTH, 4);
+
   ctx.font = `800 28px ${FONT}`;
   ctx.fillStyle = "#115e59";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  let y = MARGIN + 8;
+  let y = MARGIN + 18;
   wrapText(ctx, doc.title, CANVAS_WIDTH - MARGIN * 2).forEach((line) => {
     ctx.fillText(line, MARGIN, y);
     y += 34;
@@ -164,6 +168,39 @@ function drawHeader(ctx: CanvasRenderingContext2D, doc: PdfDocument) {
     ctx.fillText(line, MARGIN, y, CANVAS_WIDTH - MARGIN * 2);
     y += 24;
   }
+
+  if (doc.kpis?.length) {
+    y += 10;
+    const gap = 12;
+    const columns = Math.min(3, doc.kpis.length);
+    const cardWidth = (CANVAS_WIDTH - MARGIN * 2 - gap * (columns - 1)) / columns;
+    const cardHeight = 78;
+    doc.kpis.forEach((kpi, index) => {
+      const row = Math.floor(index / columns);
+      const col = index % columns;
+      const x = MARGIN + col * (cardWidth + gap);
+      const cardY = y + row * (cardHeight + gap);
+      ctx.fillStyle = "#f4f7f7";
+      roundRect(ctx, x, cardY, cardWidth, cardHeight, 12);
+      ctx.fill();
+      ctx.strokeStyle = "#d7e3e2";
+      ctx.lineWidth = 2;
+      roundRect(ctx, x, cardY, cardWidth, cardHeight, 12);
+      ctx.stroke();
+      ctx.fillStyle = "#0f766e";
+      ctx.fillRect(x, cardY + 10, 6, cardHeight - 20);
+      ctx.font = `600 15px ${FONT}`;
+      ctx.fillStyle = "#64748b";
+      ctx.textAlign = "left";
+      ctx.fillText(kpi.label, x + 18, cardY + 28, cardWidth - 28);
+      ctx.font = `800 20px ${FONT}`;
+      ctx.fillStyle = "#17212b";
+      ctx.fillText(kpi.value, x + 18, cardY + 56, cardWidth - 28);
+    });
+    const rows = Math.ceil(doc.kpis.length / columns);
+    y += rows * (cardHeight + gap) + 8;
+  }
+
   return y + 16;
 }
 

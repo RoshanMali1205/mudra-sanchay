@@ -71,18 +71,69 @@ export function DashboardPage() {
         />
       </header>
       <div className="metric-grid">
-        <MetricCard label={t("dashboard.todayIncome")} value={money(data?.freightPaise)} tone="income" />
-        <MetricCard label={t("dashboard.received")} value={money(data?.receivedPaise)} />
-        <MetricCard label={t("dashboard.expenses")} value={money(data?.expensesPaise)} tone="expense" />
-        <MetricCard label={t("dashboard.netCash")} value={money(data?.cashSurplusPaise)} tone="accent" hint={t("dashboard.cashHint")} />
-        <MetricCard label={t("dashboard.crates")} value={String(data?.crates ?? 0)} />
-        <MetricCard label={t("dashboard.trips")} value={String(data?.trips ?? 0)} />
-        <MetricCard label={t("dashboard.farmersToday")} value={String(data?.farmerCount ?? sheet?.farmerCount ?? 0)} />
-        <MetricCard label={t("dashboard.outstanding")} value={money(data?.outstandingPaise)} />
+        <MetricCard
+          label={t("dashboard.todayIncome")}
+          value={money(data?.freightPaise)}
+          tone="income"
+          imageSrc="/images/farm-fields.png"
+          imageAlt=""
+          imagePosition="center 35%"
+        />
+        <MetricCard
+          label={t("dashboard.received")}
+          value={money(data?.receivedPaise)}
+          imageSrc="/images/tomato-crates.png"
+          imageAlt=""
+          imagePosition="center 40%"
+        />
+        <MetricCard
+          label={t("dashboard.expenses")}
+          value={money(data?.expensesPaise)}
+          tone="expense"
+          imageSrc="/images/tile-expense.svg"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("dashboard.netCash")}
+          value={money(data?.cashSurplusPaise)}
+          tone="accent"
+          hint={t("dashboard.cashHint")}
+          imageSrc="/images/tile-payment.svg"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("dashboard.crates")}
+          value={String(data?.crates ?? 0)}
+          imageSrc="/images/tomato-crate-square.png"
+          imageAlt=""
+          imagePosition="center"
+        />
+        <MetricCard
+          label={t("dashboard.trips")}
+          value={String(data?.trips ?? 0)}
+          imageSrc="/images/tile-trip.svg"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("dashboard.farmersToday")}
+          value={String(data?.farmerCount ?? sheet?.farmerCount ?? 0)}
+          imageSrc="/images/tile-farmer.svg"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("dashboard.outstanding")}
+          value={money(data?.outstandingPaise)}
+          imageSrc="/images/farm-fields.png"
+          imageAlt=""
+          imagePosition="70% 60%"
+        />
         <MetricCard
           label={t("dashboard.accrualProfit")}
           value={money(data?.accrualProfitPaise)}
           hint={t("dashboard.accrualHint")}
+          imageSrc="/images/tomato-crates.png"
+          imageAlt=""
+          imagePosition="left center"
         />
       </div>
       {sheet?.farmers?.length ? (
@@ -112,16 +163,24 @@ export function DashboardPage() {
       ) : null}
       <div className="quick-grid" style={{ marginTop: 16 }}>
         <Link className="action-card action-card-primary" to="/trips/new">
-          {t("trip.new")}
+          <img className="action-card-media" src="/images/tile-trip.svg" alt="" />
+          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+          <p className="action-card-label">{t("trip.new")}</p>
         </Link>
         <Link className="action-card action-card-primary" to="/farmers/new">
-          {t("farmer.new")}
+          <img className="action-card-media" src="/images/tile-farmer.svg" alt="" />
+          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+          <p className="action-card-label">{t("farmer.new")}</p>
         </Link>
         <Link className="action-card action-card-accent" to="/payments/new">
-          {t("payment.new")}
+          <img className="action-card-media" src="/images/tile-payment.svg" alt="" />
+          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+          <p className="action-card-label">{t("payment.new")}</p>
         </Link>
         <Link className="action-card action-card-accent" to="/expenses/new">
-          {t("expense.new")}
+          <img className="action-card-media" src="/images/tile-expense.svg" alt="" />
+          <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
+          <p className="action-card-label">{t("expense.new")}</p>
         </Link>
       </div>
       {data && data.trips === 0 ? (

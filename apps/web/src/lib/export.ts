@@ -77,6 +77,7 @@ export function statementPdfDocument(
       farmer.mobile ? farmer.mobile : "",
       generatedStamp()
     ].filter(Boolean),
+    kpis: [{ label: labels.outstanding, value: formatInrFromPaise(farmer.outstandingPaise) }],
     columns: [
       { label: labels.date, width: 150 },
       { label: labels.details },
@@ -126,15 +127,17 @@ export function reportPdfDocument(
     filename: "mudra-sanchay-report.pdf",
     title: PRINT_BRAND,
     subtitle: labels.title,
-    meta: [
-      `${from} → ${to}`,
-      `${labels.income}: ${formatInrFromPaise(summary?.freightPaise ?? 0)}`,
-      `${labels.received}: ${formatInrFromPaise(summary?.receivedPaise ?? 0)}`,
-      `${labels.expenses}: ${formatInrFromPaise(summary?.expensesPaise ?? 0)}`,
-      `${labels.profit}: ${formatInrFromPaise(summary?.accrualProfitPaise ?? 0)}`,
-      `${labels.cash}: ${formatInrFromPaise(summary?.cashSurplusPaise ?? 0)}`,
-      `${labels.crates}: ${summary?.crates ?? dailySheet?.crates ?? 0} · ${labels.trips}: ${summary?.trips ?? dailySheet?.trips ?? 0}${labels.farmers ? ` · ${labels.farmers}: ${farmerCount}` : ""}`,
-      generatedStamp()
+    meta: [`${from} → ${to}`, generatedStamp()],
+    kpis: [
+      { label: labels.income, value: formatInrFromPaise(summary?.freightPaise ?? 0) },
+      { label: labels.received, value: formatInrFromPaise(summary?.receivedPaise ?? 0) },
+      { label: labels.expenses, value: formatInrFromPaise(summary?.expensesPaise ?? 0) },
+      { label: labels.profit, value: formatInrFromPaise(summary?.accrualProfitPaise ?? 0) },
+      { label: labels.cash, value: formatInrFromPaise(summary?.cashSurplusPaise ?? 0) },
+      {
+        label: labels.outstanding,
+        value: formatInrFromPaise(summary?.outstandingPaise ?? 0)
+      }
     ],
     columns: [
       { label: labels.farmer },
@@ -147,6 +150,7 @@ export function reportPdfDocument(
       formatInrFromPaise(farmer.outstandingPaise)
     ]),
     summary: [
+      `${labels.crates}: ${summary?.crates ?? dailySheet?.crates ?? 0} · ${labels.trips}: ${summary?.trips ?? dailySheet?.trips ?? 0}${labels.farmers ? ` · ${labels.farmers}: ${farmerCount}` : ""}`,
       ...(labels.daySheet && dailySheet
         ? [`${labels.daySheet}: ${farmerCount} · ${dailySheet.crates} ${labels.crates}`]
         : []),
