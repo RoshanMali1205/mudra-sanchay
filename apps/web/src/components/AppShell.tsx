@@ -10,7 +10,7 @@ const navItems = [
   { to: "/dashboard", key: "nav.home" },
   { to: "/trips", key: "nav.trips" },
   { to: "/farmers", key: "nav.farmers" },
-  { to: "/reports", key: "nav.reports" },
+  { to: "/expenses", key: "nav.expenses" },
   { to: "/more", key: "nav.more" }
 ];
 

@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -67,8 +67,19 @@ export function ExpensesPage() {
 
   return (
     <section>
-      <header className="page-header">
+      <header className="page-header page-header-compact row-between">
         <h1>{showForm ? t("expense.new") : t("expense.list")}</h1>
+        {showForm ? (
+          <Link className="ms-btn ms-btn-ghost" to="/expenses">
+            {t("action.cancel")}
+          </Link>
+        ) : (
+          <Link className="ms-btn ms-btn-primary" to="/expenses/new">
+            {t("expense.new")}
+          </Link>
+        )}
+      </header>
+      {!showForm ? (
         <DateRangePicker
           preset={preset}
           onPreset={(value) => {
@@ -91,7 +102,7 @@ export function ExpensesPage() {
             custom: t("range.custom")
           }}
         />
-      </header>
+      ) : null}
       {showForm ? (
         <form className="ms-card form-card" onSubmit={(event) => void onSubmit(event)}>
           <div className="chip-row">

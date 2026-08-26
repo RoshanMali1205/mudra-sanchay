@@ -5,6 +5,12 @@ export function MorePage() {
   const { t } = useTranslation();
   const links = [
     {
+      to: "/reports",
+      label: t("more.reports"),
+      hint: t("more.reportsHint"),
+      image: "/images/tile-report.svg"
+    },
+    {
       to: "/expenses",
       label: t("more.expenses"),
       hint: t("more.expensesHint"),
