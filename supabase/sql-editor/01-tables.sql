@@ -123,12 +123,13 @@ create table if not exists public.mudra_crate_entries (
   business_id uuid not null references public.mudra_businesses (id),
   trip_id uuid not null references public.mudra_trips (id) on delete cascade,
   farmer_id uuid not null references public.mudra_farmers (id),
+  crate_type text not null default 'golti',
   crate_count integer not null default 0,
   rate_paise integer not null,
   freight_amount_paise integer not null default 0,
   rate_source text not null default 'business_default',
   created_at timestamptz not null default now(),
-  unique (trip_id, farmer_id)
+  unique (trip_id, farmer_id, crate_type)
 );
 
 create table if not exists public.mudra_payments (

@@ -36,6 +36,17 @@ export const EXPENSE_CATEGORY_CODES = [
   "other"
 ] as const;
 
+/** Tomato crate grades used on trip entries. */
+export const CRATE_TYPE_CODES = [
+  "golti",
+  "lal",
+  "badla",
+  "ek_number",
+  "export_quality"
+] as const;
+
+export const DEFAULT_CRATE_TYPE = "golti" as const;
+
 export const RECEIPT_PAYMENT_STATUSES = [
   "uploaded",
   "linked",

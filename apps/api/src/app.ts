@@ -6,6 +6,7 @@ import {
   copyFarmersSchema,
   crateEntryCreateSchema,
   crateEntryPatchSchema,
+  DEFAULT_CRATE_TYPE,
   expenseCreateSchema,
   farmerCreateSchema,
   forgotPasswordSchema,
@@ -80,16 +81,17 @@ app.use("*", async (c, next) => {
   c.set("requestId", requestId);
   c.header("x-request-id", requestId);
 
-  if (isSupabaseEnabled() && !c.req.path.endsWith("/health")) {
-    await hydrateFromSupabase();
-  }
-
   const token = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
   if (isSupabaseEnabled()) {
     c.set("user", await sessionFromToken(token));
   } else {
     const stored = getUserByToken(token);
     c.set("user", stored ? toSessionUser(stored) : null);
+  }
+
+  // Hydrate only this login's business so accounts never share entries.
+  if (isSupabaseEnabled() && !c.req.path.endsWith("/health")) {
+    await hydrateFromSupabase(c.get("user")?.businessId ?? null);
   }
 
   const before = isSupabaseEnabled() ? captureStoreSnapshot() : null;
@@ -119,6 +121,15 @@ function requireUser(c: Context<AppEnv>) {
   return c.get("user");
 }
 
+function requireBusinessId(user: SessionUser) {
+  return user.businessId;
+}
+
+function forBusiness<T extends { businessId?: string }>(items: T[], businessId: string | null | undefined) {
+  if (!businessId) return [] as T[];
+  return items.filter((item) => !item.businessId || item.businessId === businessId);
+}
+
 app.get("/health", (c) => {
   const supabase = supabaseConfigStatus();
   return c.json({
@@ -140,7 +151,6 @@ app.post("/auth/register", async (c) => {
   if (isSupabaseEnabled()) {
     try {
       const created = await registerWithSupabase(parsed.data);
-      await ensureBusinessMembership(created.userId);
       const user = await sessionFromToken(created.token);
       if (!user) return fail(c, 500, "UNEXPECTED", "Account created. Sign in again.");
       return c.json({ data: { token: created.token, user } }, 201);
@@ -152,9 +162,6 @@ app.post("/auth/register", async (c) => {
 
   if (store.users.some((user) => user.email === parsed.data.email.toLowerCase())) {
     return fail(c, 409, "EMAIL_IN_USE", "Could not create the account with those details.");
-  }
-  if (store.ownerCreated) {
-    return fail(c, 403, "REGISTRATION_CLOSED", "Owner registration is closed. Ask an admin for an invite.");
   }
 
   const user = {
@@ -252,19 +259,13 @@ app.post("/auth/bootstrap", async (c) => {
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   if (user.onboarded) return fail(c, 409, "ALREADY_ONBOARDED", "Business profile already exists.");
 
-  if (isSupabaseEnabled() && store.businesses[0]) {
-    await ensureBusinessMembership(user.id);
-    const stored = store.users.find((item) => item.id === user.id);
-    return c.json({ data: { user: stored ? toSessionUser(stored) : { ...user, onboarded: true, businessId: store.businesses[0].id, role: "admin" as const }, business: store.businesses[0] } }, 201);
-  }
-
   const parsed = onboardingSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Check the highlighted fields.", parsed.error.flatten().fieldErrors);
   }
 
   const businessId = createId();
-  store.businesses.push({
+  const business = {
     id: businessId,
     name: parsed.data.businessName,
     printName: parsed.data.printName || PRINT_BRAND,
@@ -274,16 +275,19 @@ app.post("/auth/bootstrap", async (c) => {
     timezone: "Asia/Kolkata",
     currency: "INR",
     defaultRatePaise: parsed.data.defaultRatePaise
-  });
+  };
+  store.businesses.push(business);
   store.members.push({ userId: user.id, businessId, role: "admin" });
   store.vehicles.push({
     id: createId(),
+    businessId,
     registrationNumber: parsed.data.vehicleRegistration,
     displayName: parsed.data.vehicleDisplayName,
     active: true
   });
   store.routes.push({
     id: createId(),
+    businessId,
     originName: parsed.data.originName,
     destinationName: parsed.data.destinationName,
     defaultRatePaise: parsed.data.defaultRatePaise,
@@ -292,16 +296,25 @@ app.post("/auth/bootstrap", async (c) => {
   store.ownerCreated = true;
   audit(user.fullName, "bootstrap", "business", businessId, undefined, { name: parsed.data.businessName });
 
-  const stored = store.users.find((item) => item.id === user.id)!;
-  return c.json({ data: { user: toSessionUser(stored), business: store.businesses[0] } }, 201);
+  if (isSupabaseEnabled()) {
+    await ensureBusinessMembership(user.id, businessId);
+  }
+
+  const stored = store.users.find((item) => item.id === user.id);
+  const sessionUser = stored
+    ? toSessionUser(stored)
+    : { ...user, onboarded: true, businessId, role: "admin" as const };
+  return c.json({ data: { user: sessionUser, business } }, 201);
 });
 
 app.get("/farmers", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const q = (c.req.query("q") ?? "").trim().toLowerCase();
   const includeArchived = c.req.query("archived") === "true";
-  const farmers = store.farmers
+  const farmers = forBusiness(store.farmers, businessId)
     .filter((farmer) => includeArchived || farmer.active)
     .filter((farmer) => {
       if (!q) return true;
@@ -309,19 +322,21 @@ app.get("/farmers", (c) => {
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(q));
     })
-    .map((farmer) => farmerSummary(farmer));
+    .map((farmer) => farmerSummary(farmer, undefined, undefined, businessId));
   return c.json({ data: farmers, meta: { count: farmers.length } });
 });
 
 app.post("/farmers", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const parsed = farmerCreateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Name and village are required.", parsed.error.flatten().fieldErrors);
   }
 
-  const duplicate = store.farmers.find(
+  const duplicate = forBusiness(store.farmers, businessId).find(
     (item) =>
       item.fullName.toLowerCase() === parsed.data.fullName.toLowerCase() ||
       (parsed.data.mobile && item.mobile === parsed.data.mobile)
@@ -338,7 +353,8 @@ app.post("/farmers", async (c) => {
 
   const farmer = {
     id: createId(),
-    farmerCode: nextFarmerCode(),
+    businessId,
+    farmerCode: nextFarmerCode(businessId),
     fullName: parsed.data.fullName,
     village: parsed.data.village,
     mobile: parsed.data.mobile || undefined,
@@ -352,20 +368,22 @@ app.post("/farmers", async (c) => {
   };
   store.farmers.push(farmer);
   audit(user.fullName, "create", "farmer", farmer.id, undefined, { fullName: farmer.fullName });
-  return c.json({ data: farmerSummary(farmer) }, 201);
+  return c.json({ data: farmerSummary(farmer, undefined, undefined, businessId) }, 201);
 });
 
 app.get("/farmers/:id", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === c.req.param("id"));
   if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
   const from = c.req.query("from");
   const to = c.req.query("to");
   return c.json({
     data: {
-      farmer: farmerSummary(farmer, from, to),
-      ledger: farmerLedger(farmer.id, from, to)
+      farmer: farmerSummary(farmer, from, to, businessId),
+      ledger: farmerLedger(farmer.id, from, to, businessId)
     }
   });
 });
@@ -373,64 +391,78 @@ app.get("/farmers/:id", (c) => {
 app.patch("/farmers/:id", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === c.req.param("id"));
   if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
   const parsed = farmerCreateSchema.partial().safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Check the highlighted fields.");
   const before = { ...farmer };
   Object.assign(farmer, parsed.data);
   audit(user.fullName, "update", "farmer", farmer.id, before, farmer);
-  return c.json({ data: farmerSummary(farmer) });
+  return c.json({ data: farmerSummary(farmer, undefined, undefined, businessId) });
 });
 
 app.delete("/farmers/:id", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === c.req.param("id"));
   if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
   farmer.active = false;
   audit(user.fullName, "archive", "farmer", farmer.id, { active: true }, { active: false });
-  return c.json({ data: farmerSummary(farmer) });
+  return c.json({ data: farmerSummary(farmer, undefined, undefined, businessId) });
 });
 
 app.post("/farmers/:id/restore", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const farmer = store.farmers.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === c.req.param("id"));
   if (!farmer) return fail(c, 404, "NOT_FOUND", "Farmer was not found.");
   farmer.active = true;
   audit(user.fullName, "restore", "farmer", farmer.id, { active: false }, { active: true });
-  return c.json({ data: farmerSummary(farmer) });
+  return c.json({ data: farmerSummary(farmer, undefined, undefined, businessId) });
 });
 
 app.get("/vehicles", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  return c.json({ data: store.vehicles });
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  return c.json({ data: forBusiness(store.vehicles, businessId) });
 });
 
 app.get("/routes", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  return c.json({ data: store.routes });
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  return c.json({ data: forBusiness(store.routes, businessId) });
 });
 
 app.get("/trips", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const date = c.req.query("date");
-  const trips = date ? store.trips.filter((trip) => trip.tripDate === date) : store.trips;
+  const trips = forBusiness(store.trips, businessId).filter((trip) => !date || trip.tripDate === date);
   return c.json({ data: [...trips].sort((a, b) => b.tripDate.localeCompare(a.tripDate)) });
 });
 
 app.post("/trips", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const parsed = tripCreateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Date, vehicle and route are required.", parsed.error.flatten().fieldErrors);
   }
-  const sameDay = store.trips.filter(
+  const sameDay = forBusiness(store.trips, businessId).filter(
     (trip) => trip.tripDate === parsed.data.tripDate && trip.vehicleId === parsed.data.vehicleId
   );
   const tripNumber = parsed.data.tripNumber ?? (sameDay.length + 1);
@@ -439,6 +471,7 @@ app.post("/trips", async (c) => {
   }
   const trip = {
     id: createId(),
+    businessId,
     tripDate: parsed.data.tripDate,
     tripNumber,
     vehicleId: parsed.data.vehicleId,
@@ -457,7 +490,9 @@ app.post("/trips", async (c) => {
 app.get("/trips/:id", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const trip = forBusiness(store.trips, businessId).find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
   return c.json({ data: trip });
 });
@@ -465,22 +500,24 @@ app.get("/trips/:id", (c) => {
 app.post("/trips/:id/entries", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const trip = forBusiness(store.trips, businessId).find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
   if (trip.status !== "draft") {
     return fail(c, 422, "TRIP_LOCKED", "Completed trips cannot take ordinary edits.");
   }
   const parsed = crateEntryCreateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
-    return fail(c, 400, "VALIDATION", "Farmer and crate count are required.", parsed.error.flatten().fieldErrors);
+    return fail(c, 400, "VALIDATION", "Farmer, crate type and crate count are required.", parsed.error.flatten().fieldErrors);
   }
-  const farmer = store.farmers.find((item) => item.id === parsed.data.farmerId);
+  const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === parsed.data.farmerId);
   if (!farmer) return fail(c, 422, "FARMER_MISSING", "Choose a farmer from this business.");
-  if (trip.entries.some((entry) => entry.farmerId === farmer.id)) {
-    return fail(c, 409, "DUPLICATE_FARMER", "This farmer is already on the trip.");
+  if (trip.entries.some((entry) => entry.farmerId === farmer.id && entry.crateType === parsed.data.crateType)) {
+    return fail(c, 409, "DUPLICATE_FARMER", "This farmer already has that crate type on the trip.");
   }
-  const business = store.businesses[0];
-  const route = store.routes.find((item) => item.id === trip.routeId);
+  const business = store.businesses.find((item) => item.id === businessId) ?? store.businesses[0];
+  const route = forBusiness(store.routes, businessId).find((item) => item.id === trip.routeId);
   const resolved = resolveFreightRate({
     manualRatePaise: parsed.data.ratePaise,
     routeRatePaise: route?.defaultRatePaise,
@@ -492,6 +529,7 @@ app.post("/trips/:id/entries", async (c) => {
     tripId: trip.id,
     farmerId: farmer.id,
     farmerName: farmer.fullName,
+    crateType: parsed.data.crateType,
     crateCount: parsed.data.crateCount,
     ratePaise: resolved.ratePaise,
     freightAmountPaise,
@@ -501,6 +539,7 @@ app.post("/trips/:id/entries", async (c) => {
   trip.entries.push(entry);
   Object.assign(trip, tripTotals(trip.entries));
   audit(user.fullName, "create", "crate_entry", entry.id, undefined, {
+    crateType: entry.crateType,
     crateCount: entry.crateCount,
     freightAmountPaise
   });
@@ -511,7 +550,9 @@ app.post("/trips/:id/entries", async (c) => {
 app.patch("/trips/:id/entries/:entryId", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const trip = forBusiness(store.trips, businessId).find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
   if (trip.status !== "draft") return fail(c, 422, "TRIP_LOCKED", "Completed trips cannot take ordinary edits.");
   const entry = trip.entries.find((item) => item.id === c.req.param("entryId"));
@@ -519,6 +560,19 @@ app.patch("/trips/:id/entries/:entryId", async (c) => {
   const parsed = crateEntryPatchSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Check crate count and rate.");
   const before = { ...entry };
+  if (parsed.data.crateType !== undefined) {
+    if (
+      trip.entries.some(
+        (item) =>
+          item.id !== entry.id &&
+          item.farmerId === (parsed.data.farmerId ?? entry.farmerId) &&
+          item.crateType === parsed.data.crateType
+      )
+    ) {
+      return fail(c, 409, "DUPLICATE_FARMER", "This farmer already has that crate type on the trip.");
+    }
+    entry.crateType = parsed.data.crateType;
+  }
   if (parsed.data.crateCount !== undefined) entry.crateCount = parsed.data.crateCount;
   if (parsed.data.ratePaise !== undefined) {
     entry.ratePaise = parsed.data.ratePaise;
@@ -534,7 +588,9 @@ app.patch("/trips/:id/entries/:entryId", async (c) => {
 app.delete("/trips/:id/entries/:entryId", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const trip = forBusiness(store.trips, businessId).find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
   if (trip.status !== "draft") return fail(c, 422, "TRIP_LOCKED", "Completed trips cannot take ordinary edits.");
   const entry = trip.entries.find((item) => item.id === c.req.param("entryId"));
@@ -548,34 +604,43 @@ app.delete("/trips/:id/entries/:entryId", (c) => {
 app.post("/trips/:id/copy-farmers", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const trip = forBusiness(store.trips, businessId).find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
   if (trip.status !== "draft") return fail(c, 422, "TRIP_LOCKED", "Completed trips cannot take ordinary edits.");
   const parsed = copyFarmersSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Select farmers from a previous trip.");
-  const source = store.trips.find((item) => item.id === parsed.data.sourceTripId);
+  const source = forBusiness(store.trips, businessId).find((item) => item.id === parsed.data.sourceTripId);
   if (!source) return fail(c, 404, "NOT_FOUND", "Source trip was not found.");
-  const business = store.businesses[0];
-  const route = store.routes.find((item) => item.id === trip.routeId);
+  const business = store.businesses.find((item) => item.id === businessId) ?? store.businesses[0];
+  const route = forBusiness(store.routes, businessId).find((item) => item.id === trip.routeId);
   for (const farmerId of parsed.data.farmerIds) {
-    if (trip.entries.some((entry) => entry.farmerId === farmerId)) continue;
-    const farmer = store.farmers.find((item) => item.id === farmerId && item.active);
+    const sourceEntries = source.entries.filter((entry) => entry.farmerId === farmerId);
+    const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === farmerId && item.active);
     if (!farmer) continue;
-    const resolved = resolveFreightRate({
-      routeRatePaise: route?.defaultRatePaise,
-      businessDefaultRatePaise: business?.defaultRatePaise
-    });
-    trip.entries.push({
-      id: createId(),
-      tripId: trip.id,
-      farmerId: farmer.id,
-      farmerName: farmer.fullName,
-      crateCount: 0,
-      ratePaise: resolved.ratePaise,
-      freightAmountPaise: 0,
-      rateSource: resolved.source,
-      notes: "Copied farmer — set crate count"
-    });
+    const crateTypes = sourceEntries.length
+      ? sourceEntries.map((entry) => entry.crateType ?? DEFAULT_CRATE_TYPE)
+      : [DEFAULT_CRATE_TYPE];
+    for (const crateType of crateTypes) {
+      if (trip.entries.some((entry) => entry.farmerId === farmerId && entry.crateType === crateType)) continue;
+      const resolved = resolveFreightRate({
+        routeRatePaise: route?.defaultRatePaise,
+        businessDefaultRatePaise: business?.defaultRatePaise
+      });
+      trip.entries.push({
+        id: createId(),
+        tripId: trip.id,
+        farmerId: farmer.id,
+        farmerName: farmer.fullName,
+        crateType,
+        crateCount: 0,
+        ratePaise: resolved.ratePaise,
+        freightAmountPaise: 0,
+        rateSource: resolved.source,
+        notes: "Copied farmer — set crate count"
+      });
+    }
   }
   Object.assign(trip, tripTotals(trip.entries));
   return c.json({ data: trip });
@@ -584,7 +649,9 @@ app.post("/trips/:id/copy-farmers", async (c) => {
 app.post("/trips/:id/complete", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const trip = forBusiness(store.trips, businessId).find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
   if (trip.entries.length === 0 || trip.entries.some((entry) => entry.crateCount <= 0)) {
     return fail(c, 422, "EMPTY_TRIP", "Add at least one valid crate entry before completing.");
@@ -599,9 +666,11 @@ app.post("/trips/:id/reopen", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   if (user.role !== "admin") return fail(c, 403, "FORBIDDEN", "Only an admin can reopen a trip.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const parsed = tripReopenSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "A reason is required to reopen.");
-  const trip = store.trips.find((item) => item.id === c.req.param("id"));
+  const trip = forBusiness(store.trips, businessId).find((item) => item.id === c.req.param("id"));
   if (!trip) return fail(c, 404, "NOT_FOUND", "Trip was not found.");
   trip.status = "draft";
   trip.notes = `${trip.notes ?? ""}\nReopened: ${parsed.data.reason}`.trim();
@@ -612,12 +681,14 @@ app.post("/trips/:id/reopen", async (c) => {
 app.get("/payments", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const farmerId = c.req.query("farmerId");
-  const rows = store.payments
+  const rows = forBusiness(store.payments, businessId)
     .filter((payment) => !farmerId || payment.farmerId === farmerId)
     .map((payment) => ({
       ...payment,
-      farmerName: store.farmers.find((farmer) => farmer.id === payment.farmerId)?.fullName
+      farmerName: forBusiness(store.farmers, businessId).find((farmer) => farmer.id === payment.farmerId)?.fullName
     }));
   return c.json({ data: rows });
 });
@@ -625,24 +696,27 @@ app.get("/payments", (c) => {
 app.post("/payments", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const body = await c.req.json();
   const parsed = paymentCreateSchema.safeParse(body);
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Farmer, date, amount and mode are required.", parsed.error.flatten().fieldErrors);
   }
   const idempotencyKey = c.req.header("idempotency-key") ?? parsed.data.idempotencyKey;
-  if (idempotencyKey && store.payments.some((payment) => payment.id === idempotencyKey)) {
-    const existing = store.payments.find((payment) => payment.id === idempotencyKey)!;
+  if (idempotencyKey && forBusiness(store.payments, businessId).some((payment) => payment.id === idempotencyKey)) {
+    const existing = forBusiness(store.payments, businessId).find((payment) => payment.id === idempotencyKey)!;
     return c.json({ data: existing });
   }
-  const farmer = store.farmers.find((item) => item.id === parsed.data.farmerId);
+  const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === parsed.data.farmerId);
   if (!farmer) return fail(c, 422, "FARMER_MISSING", "Choose a farmer from this business.");
-  const summary = farmerSummary(farmer);
+  const summary = farmerSummary(farmer, undefined, undefined, businessId);
   if (parsed.data.amountPaise > Math.max(summary.outstandingPaise, 0) && body.confirmAdvance !== true) {
     return fail(c, 422, "ADVANCE_CONFIRM", "This payment is greater than the current balance. Confirm to record it as advance/credit.");
   }
   const payment = {
     id: idempotencyKey ?? createId(),
+    businessId,
     farmerId: parsed.data.farmerId,
     farmerName: farmer.fullName,
     paymentDate: parsed.data.paymentDate,
@@ -653,13 +727,15 @@ app.post("/payments", async (c) => {
   };
   store.payments.push(payment);
   audit(user.fullName, "create", "payment", payment.id, undefined, payment);
-  return c.json({ data: { ...payment, outstandingPaise: farmerSummary(farmer).outstandingPaise } }, 201);
+  return c.json({ data: { ...payment, outstandingPaise: farmerSummary(farmer, undefined, undefined, businessId).outstandingPaise } }, 201);
 });
 
 app.patch("/payments/:id", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const payment = store.payments.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const payment = forBusiness(store.payments, businessId).find((item) => item.id === c.req.param("id"));
   if (!payment) return fail(c, 404, "NOT_FOUND", "Payment was not found.");
   const parsed = paymentCorrectSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Amount and a reason are required.");
@@ -676,11 +752,13 @@ app.patch("/payments/:id", async (c) => {
 app.get("/expenses", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const category = c.req.query("category");
   const vehicleId = c.req.query("vehicleId");
   const from = c.req.query("from");
   const to = c.req.query("to");
-  const rows = store.expenses.filter((expense) => {
+  const rows = forBusiness(store.expenses, businessId).filter((expense) => {
     if (category && expense.categoryCode !== category) return false;
     if (vehicleId && expense.vehicleId !== vehicleId) return false;
     if (from && to && (expense.expenseDate < from || expense.expenseDate > to)) return false;
@@ -696,12 +774,15 @@ app.get("/expenses", (c) => {
 app.post("/expenses", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const parsed = expenseCreateSchema.safeParse(await c.req.json());
   if (!parsed.success) {
     return fail(c, 400, "VALIDATION", "Date, category and a positive amount are required.", parsed.error.flatten().fieldErrors);
   }
   const expense = {
     id: createId(),
+    businessId,
     expenseDate: parsed.data.expenseDate,
     categoryCode: parsed.data.categoryCode,
     amountPaise: parsed.data.amountPaise,
@@ -719,21 +800,26 @@ app.post("/expenses", async (c) => {
 app.get("/receipts", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  return c.json({ data: store.receipts });
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  return c.json({ data: forBusiness(store.receipts, businessId) });
 });
 
 app.post("/receipts", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   const parsed = receiptCreateSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Upload a JPEG, PNG or PDF receipt.");
   const allowed = ["image/jpeg", "image/png", "application/pdf"];
   if (!allowed.includes(parsed.data.mimeType)) {
     return fail(c, 400, "FILE_TYPE", "Only JPEG, PNG or PDF files are allowed.");
   }
-  const farmer = store.farmers.find((item) => item.id === parsed.data.farmerId);
+  const farmer = forBusiness(store.farmers, businessId).find((item) => item.id === parsed.data.farmerId);
   const receipt = {
     id: createId(),
+    businessId,
     farmerId: parsed.data.farmerId,
     farmerName: farmer?.fullName,
     tripId: parsed.data.tripId,
@@ -762,7 +848,9 @@ app.post("/receipts", async (c) => {
 app.get("/receipts/:id", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const receipt = store.receipts.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const receipt = forBusiness(store.receipts, businessId).find((item) => item.id === c.req.param("id"));
   if (!receipt) return fail(c, 404, "NOT_FOUND", "Receipt was not found.");
   return c.json({ data: receipt });
 });
@@ -770,13 +858,15 @@ app.get("/receipts/:id", (c) => {
 app.patch("/receipts/:id", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const receipt = store.receipts.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const receipt = forBusiness(store.receipts, businessId).find((item) => item.id === c.req.param("id"));
   if (!receipt) return fail(c, 404, "NOT_FOUND", "Receipt was not found.");
   const parsed = receiptUpdateSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Check receipt details.");
   Object.assign(receipt, parsed.data);
   if (parsed.data.farmerId) {
-    receipt.farmerName = store.farmers.find((item) => item.id === parsed.data.farmerId)?.fullName;
+    receipt.farmerName = forBusiness(store.farmers, businessId).find((item) => item.id === parsed.data.farmerId)?.fullName;
   }
   syncReceiptStatus(receipt);
   return c.json({ data: receipt });
@@ -785,7 +875,9 @@ app.patch("/receipts/:id", async (c) => {
 app.post("/receipts/:id/payment-events", async (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
-  const receipt = store.receipts.find((item) => item.id === c.req.param("id"));
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  const receipt = forBusiness(store.receipts, businessId).find((item) => item.id === c.req.param("id"));
   if (!receipt) return fail(c, 404, "NOT_FOUND", "Receipt was not found.");
   const parsed = receiptPaymentEventSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Date, amount and mode are required.");
@@ -800,26 +892,32 @@ app.post("/receipts/:id/payment-events", async (c) => {
 app.get("/dashboard/summary", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   return c.json({
-    data: dashboardSummary(c.req.query("preset") ?? "today", c.req.query("from"), c.req.query("to"))
+    data: dashboardSummary(c.req.query("preset") ?? "today", c.req.query("from"), c.req.query("to"), businessId)
   });
 });
 
 app.get("/reports/daily-sheet", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   return c.json({
-    data: dailySheet(c.req.query("preset") ?? "today", c.req.query("from"), c.req.query("to"))
+    data: dailySheet(c.req.query("preset") ?? "today", c.req.query("from"), c.req.query("to"), businessId)
   });
 });
 
 app.get("/reports/outstanding", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
   return c.json({
-    data: store.farmers
+    data: forBusiness(store.farmers, businessId)
       .filter((farmer) => farmer.active)
-      .map((farmer) => farmerSummary(farmer))
+      .map((farmer) => farmerSummary(farmer, undefined, undefined, businessId))
       .sort((a, b) => b.outstandingPaise - a.outstandingPaise)
   });
 });

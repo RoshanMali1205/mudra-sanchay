@@ -1,4 +1,5 @@
-import type { SessionUser } from "@mudra-sanchay/shared";
+import type { CrateTypeCode, SessionUser } from "@mudra-sanchay/shared";
+import { DEFAULT_CRATE_TYPE } from "@mudra-sanchay/shared";
 import { APP_CODE, createSupabaseAuthClient, supabaseAdmin, isSupabaseEnabled } from "./supabase.js";
 import { store, tripTotals, type StoredUser } from "./store.js";
 
@@ -15,22 +16,41 @@ function assertOk<T extends { error: { message: string } | null }>(result: T, ac
   return result;
 }
 
-export async function hydrateFromSupabase() {
+function clearOperationalStore() {
+  store.businesses = [];
+  store.members = [];
+  store.vehicles = [];
+  store.routes = [];
+  store.farmers = [];
+  store.trips = [];
+  store.payments = [];
+  store.expenses = [];
+  store.receipts = [];
+  store.ownerCreated = false;
+}
+
+/** Load only one business into the in-memory store so logins never share entries. */
+export async function hydrateFromSupabase(businessId?: string | null) {
   const db = supabaseAdmin();
   if (!db) return;
 
+  if (!businessId) {
+    clearOperationalStore();
+    return;
+  }
+
   const [businesses, members, vehicles, routes, farmers, trips, entries, payments, expenses, receipts] =
     await Promise.all([
-      db.from("mudra_businesses").select("*").is("deleted_at", null),
-      db.from("mudra_business_members").select("*"),
-      db.from("mudra_vehicles").select("*").is("deleted_at", null),
-      db.from("mudra_routes").select("*").is("deleted_at", null),
-      db.from("mudra_farmers").select("*").is("deleted_at", null),
-      db.from("mudra_trips").select("*").is("deleted_at", null),
-      db.from("mudra_crate_entries").select("*"),
-      db.from("mudra_payments").select("*"),
-      db.from("mudra_expenses").select("*"),
-      db.from("mudra_market_receipts").select("*")
+      db.from("mudra_businesses").select("*").eq("id", businessId).is("deleted_at", null),
+      db.from("mudra_business_members").select("*").eq("business_id", businessId),
+      db.from("mudra_vehicles").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_routes").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_farmers").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_trips").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_crate_entries").select("*").eq("business_id", businessId),
+      db.from("mudra_payments").select("*").eq("business_id", businessId),
+      db.from("mudra_expenses").select("*").eq("business_id", businessId),
+      db.from("mudra_market_receipts").select("*").eq("business_id", businessId)
     ]);
 
   for (const [label, result] of [
@@ -68,6 +88,7 @@ export async function hydrateFromSupabase() {
 
   store.vehicles = (vehicles.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     registrationNumber: row.registration_number,
     displayName: row.display_name,
     active: row.active
@@ -75,6 +96,7 @@ export async function hydrateFromSupabase() {
 
   store.routes = (routes.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     originName: row.origin_name,
     destinationName: row.destination_name,
     defaultRatePaise: row.default_rate_paise ?? 2500,
@@ -83,6 +105,7 @@ export async function hydrateFromSupabase() {
 
   store.farmers = (farmers.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     farmerCode: row.farmer_code,
     fullName: row.full_name,
     village: row.village,
@@ -99,11 +122,13 @@ export async function hydrateFromSupabase() {
       .filter((entry) => entry.trip_id === row.id)
       .map((entry) => {
         const farmer = store.farmers.find((item) => item.id === entry.farmer_id);
+        const crateType = (entry.crate_type ?? DEFAULT_CRATE_TYPE) as CrateTypeCode;
         return {
           id: entry.id,
           tripId: entry.trip_id,
           farmerId: entry.farmer_id,
           farmerName: farmer?.fullName ?? "",
+          crateType,
           crateCount: entry.crate_count,
           ratePaise: entry.rate_paise,
           freightAmountPaise: entry.freight_amount_paise,
@@ -113,6 +138,7 @@ export async function hydrateFromSupabase() {
       });
     return {
       id: row.id,
+      businessId: row.business_id,
       tripDate: row.trip_date,
       tripNumber: row.trip_number,
       vehicleId: row.vehicle_id,
@@ -126,6 +152,7 @@ export async function hydrateFromSupabase() {
 
   store.payments = (payments.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     farmerId: row.farmer_id,
     farmerName: store.farmers.find((farmer) => farmer.id === row.farmer_id)?.fullName,
     paymentDate: row.payment_date,
@@ -136,6 +163,7 @@ export async function hydrateFromSupabase() {
 
   store.expenses = (expenses.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     expenseDate: row.expense_date,
     categoryCode: row.category_code,
     amountPaise: row.amount_paise,
@@ -144,6 +172,7 @@ export async function hydrateFromSupabase() {
 
   store.receipts = (receipts.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     farmerId: row.farmer_id ?? undefined,
     farmerName: store.farmers.find((farmer) => farmer.id === row.farmer_id)?.fullName,
     receiptNumber: row.receipt_number ?? undefined,
@@ -254,7 +283,7 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
       await db.from("mudra_vehicles").upsert(
         store.vehicles.map((item) => ({
           id: item.id,
-          business_id: businessId,
+          business_id: item.businessId ?? businessId,
           registration_number: item.registrationNumber,
           display_name: item.displayName,
           active: item.active
@@ -269,7 +298,7 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
       await db.from("mudra_routes").upsert(
         store.routes.map((item) => ({
           id: item.id,
-          business_id: businessId,
+          business_id: item.businessId ?? businessId,
           origin_name: item.originName,
           destination_name: item.destinationName,
           default_rate_paise: item.defaultRatePaise,
@@ -285,7 +314,7 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
       await db.from("mudra_farmers").upsert(
         store.farmers.map((item) => ({
           id: item.id,
-          business_id: businessId,
+          business_id: item.businessId ?? businessId,
           farmer_code: item.farmerCode,
           full_name: item.fullName,
           mobile: item.mobile ?? null,
@@ -304,7 +333,7 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
       await db.from("mudra_trips").upsert(
         store.trips.map((item) => ({
           id: item.id,
-          business_id: businessId,
+          business_id: item.businessId ?? businessId,
           trip_date: item.tripDate,
           trip_number: item.tripNumber,
           vehicle_id: item.vehicleId,
@@ -328,6 +357,7 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
               business_id: businessId,
               trip_id: trip.id,
               farmer_id: entry.farmerId,
+              crate_type: entry.crateType ?? DEFAULT_CRATE_TYPE,
               crate_count: entry.crateCount,
               rate_paise: entry.ratePaise,
               freight_amount_paise: entry.freightAmountPaise,
@@ -403,9 +433,8 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
   }
 }
 
-export async function ensureBusinessMembership(userId: string) {
+export async function ensureBusinessMembership(userId: string, businessId: string) {
   const db = supabaseAdmin();
-  const businessId = store.businesses[0]?.id;
   if (!db || !businessId) return;
   assertOk(
     await db.from("mudra_business_members").upsert(
@@ -462,7 +491,7 @@ export async function sessionFromToken(token: string | undefined): Promise<Sessi
     fullName: stored.fullName,
     preferredLanguage: stored.preferredLanguage,
     role: (bizMember?.role ?? membership.role ?? "admin") as SessionUser["role"],
-    businessId: bizMember?.business_id ?? store.businesses[0]?.id ?? null,
+    businessId: bizMember?.business_id ?? null,
     onboarded: Boolean(bizMember)
   };
 }
@@ -544,7 +573,6 @@ export async function loginWithSupabase(input: { email: string; password: string
   if (error || !data.session || !data.user) throw new Error("Email or password is incorrect.");
   const fullName = (data.user.user_metadata.full_name as string | undefined) ?? data.user.email ?? "User";
   await ensureMudraAccess(data.user.id, fullName);
-  await ensureBusinessMembership(data.user.id);
   const session = await sessionFromToken(data.session.access_token);
   if (!session) throw new Error("Could not open this Mudra Sanchay account. Try again.");
   return { token: data.session.access_token, user: session };
