@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   calculateFreightPaise,
+  CRATE_TYPE_CODES,
+  DEFAULT_CRATE_TYPE,
   formatInrFromPaise,
   rupeesToPaise,
   type FarmerSummary,
@@ -26,6 +28,7 @@ export function NewTripPage() {
   const [reopenReason, setReopenReason] = useState("");
   const [crates, setCrates] = useState(50);
   const [rateRupees, setRateRupees] = useState(25);
+  const [crateType, setCrateType] = useState<(typeof CRATE_TYPE_CODES)[number]>(DEFAULT_CRATE_TYPE);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: () => api<Vehicle[]>("/vehicles") });
@@ -82,6 +85,7 @@ export function NewTripPage() {
         method: "POST",
         body: JSON.stringify({
           farmerId: form.get("farmerId"),
+          crateType: form.get("crateType") || DEFAULT_CRATE_TYPE,
           crateCount: Number(form.get("crateCount")),
           ratePaise: rupeesToPaise(Number(form.get("rateRupees") || 25))
         })
@@ -245,6 +249,7 @@ export function NewTripPage() {
                 event.currentTarget.reset();
                 setCrates(50);
                 setRateRupees(25);
+                setCrateType(DEFAULT_CRATE_TYPE);
               }}
             >
               <label className="ms-field">
@@ -253,6 +258,21 @@ export function NewTripPage() {
                   {farmers.filter((farmer) => farmer.active).map((farmer) => (
                     <option key={farmer.id} value={farmer.id}>
                       {farmer.fullName} · {farmer.village}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="ms-field">
+                <span className="ms-label">{t("trip.crateType")}</span>
+                <select
+                  name="crateType"
+                  required
+                  value={crateType}
+                  onChange={(event) => setCrateType(event.target.value as (typeof CRATE_TYPE_CODES)[number])}
+                >
+                  {CRATE_TYPE_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {t(`trip.crateType.${code}`)}
                     </option>
                   ))}
                 </select>
@@ -295,7 +315,10 @@ export function NewTripPage() {
             const farmerDue = farmers.find((farmer) => farmer.id === entry.farmerId)?.outstandingPaise;
             return (
             <article key={entry.id} className="ms-card form-card">
-              <strong>{entry.farmerName}</strong>
+              <strong>
+                {entry.farmerName}
+                {entry.crateType ? ` · ${t(`trip.crateType.${entry.crateType}`)}` : ""}
+              </strong>
               <p className="muted">
                 {entry.crateCount || "—"} {t("trip.crates")} · {formatInrFromPaise(entry.freightAmountPaise)} · {entry.rateSource}
                 {farmerDue != null ? (
