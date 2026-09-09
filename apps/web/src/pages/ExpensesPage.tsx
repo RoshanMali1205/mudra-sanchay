@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -20,6 +20,7 @@ import { downloadPdf } from "../lib/pdf";
 export function ExpensesPage() {
   const { t } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
   const showForm = location.pathname.endsWith("/new") || location.pathname === "/expenses/new";
   const queryClient = useQueryClient();
   const [preset, setPreset] = useState("month");
@@ -59,7 +60,7 @@ export function ExpensesPage() {
       setState("saved");
       await queryClient.invalidateQueries({ queryKey: ["expenses"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      event.currentTarget.reset();
+      navigate("/expenses");
     } catch {
       setState("error");
     }
@@ -135,10 +136,6 @@ export function ExpensesPage() {
             <span className="ms-label">{t("expense.vendor")}</span>
             <input name="vendorName" />
           </label>
-          <label className="ms-field">
-            <span className="ms-label">{t("expense.bill")}</span>
-            <input name="bill" type="file" accept="image/*,application/pdf" />
-          </label>
           <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
           <div className="form-actions">
             <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
@@ -146,11 +143,12 @@ export function ExpensesPage() {
             </button>
           </div>
         </form>
-      ) : null}
+      ) : (
+      <>
       <div className="filters-panel" style={{ marginTop: 14 }}>
         <div className="chip-row">
           <button type="button" className={category === "" ? "chip active" : "chip"} onClick={() => setCategory("")}>
-            All
+            {t("action.all")}
           </button>
           {EXPENSE_CATEGORY_CODES.map((code) => (
             <button
@@ -250,6 +248,8 @@ export function ExpensesPage() {
             </article>
           ))}
         </div>
+      )}
+      </>
       )}
     </section>
   );

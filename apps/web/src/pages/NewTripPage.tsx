@@ -36,7 +36,11 @@ export function NewTripPage() {
   const { data: farmers = [] } = useQuery({ queryKey: ["farmers"], queryFn: () => api<FarmerSummary[]>("/farmers") });
   const { data: trips = [] } = useQuery({ queryKey: ["trips"], queryFn: () => api<Trip[]>("/trips") });
 
-  useQuery({
+  const {
+    isLoading: tripLoading,
+    isError: tripLoadError,
+    error: tripError
+  } = useQuery({
     queryKey: ["trip", tripId],
     enabled: Boolean(tripId),
     queryFn: async () => {
@@ -55,6 +59,8 @@ export function NewTripPage() {
   }, [crates, rateRupees]);
 
   const previousTrip = trips.find((item) => item.id !== trip?.id && item.entries.length > 0);
+  const uniqueFarmerCount =
+    trip?.farmerCount ?? (trip ? new Set(trip.entries.map((entry) => entry.farmerId)).size : 0);
 
   async function createTrip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -94,6 +100,10 @@ export function NewTripPage() {
     onSuccess: (updated) => {
       setTrip(updated);
       setState("saved");
+      setError("");
+      setCrates(50);
+      setRateRupees(25);
+      setCrateType(DEFAULT_CRATE_TYPE);
     },
     onError: (err) => {
       setState("error");
@@ -184,7 +194,16 @@ export function NewTripPage() {
         <h1>{trip ? `${t("trip.number")} ${trip.tripNumber}` : t("trip.new")}</h1>
         <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
       </header>
-      {!trip ? (
+      {tripId && tripLoading ? <p className="muted">{t("status.saving")}</p> : null}
+      {tripId && tripLoadError ? (
+        <div className="ms-card form-card">
+          <p className="ms-error">{tripError instanceof Error ? tripError.message : t("status.error")}</p>
+          <Link className="ms-btn ms-btn-ghost" to="/trips">
+            {t("nav.trips")}
+          </Link>
+        </div>
+      ) : null}
+      {!trip && !tripId ? (
         <form className="ms-card form-card" onSubmit={(event) => void createTrip(event)}>
           <label className="ms-field">
             <span className="ms-label">{t("trip.date")}</span>
@@ -217,7 +236,7 @@ export function NewTripPage() {
             </button>
           </div>
         </form>
-      ) : (
+      ) : trip ? (
         <>
           <article className="ms-card form-card">
             <div className="row-between">
@@ -227,7 +246,7 @@ export function NewTripPage() {
               <span className="entity-code">{t(`trip.${trip.status}`)}</span>
             </div>
             <p style={{ margin: 0 }}>
-              {t("trip.totals")}: {trip.farmerCount ?? new Set(trip.entries.map((entry) => entry.farmerId)).size}{" "}
+              {t("trip.totals")}: {uniqueFarmerCount}{" "}
               {t("trip.farmersCount")} · {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
             </p>
             {trip.status === "draft" && previousTrip ? (
@@ -245,11 +264,12 @@ export function NewTripPage() {
               onSubmit={(event) => {
                 event.preventDefault();
                 setState("saving");
-                addEntry.mutate(new FormData(event.currentTarget));
-                event.currentTarget.reset();
-                setCrates(50);
-                setRateRupees(25);
-                setCrateType(DEFAULT_CRATE_TYPE);
+                setError("");
+                addEntry.mutate(new FormData(event.currentTarget), {
+                  onSuccess: () => {
+                    event.currentTarget.reset();
+                  }
+                });
               }}
             >
               <label className="ms-field">
@@ -374,11 +394,11 @@ export function NewTripPage() {
             <Link to="/trips">{t("nav.trips")}</Link>
           </p>
         </>
-      )}
+      ) : null}
       {confirmComplete ? (
         <ConfirmDialog
           title={t("action.completeTrip")}
-          body={`${t("trip.confirmComplete")} ${trip?.entries.length} ${t("nav.farmers")}, ${trip?.totalCrates} ${t("trip.crates")}, ${formatInrFromPaise(trip?.totalFreightPaise ?? 0)}.`}
+          body={`${t("trip.confirmComplete")} ${uniqueFarmerCount} ${t("nav.farmers")}, ${trip?.totalCrates} ${t("trip.crates")}, ${formatInrFromPaise(trip?.totalFreightPaise ?? 0)}.`}
           confirmLabel={t("action.confirm")}
           cancelLabel={t("action.cancel")}
           onCancel={() => setConfirmComplete(false)}
