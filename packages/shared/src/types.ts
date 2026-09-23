@@ -183,6 +183,7 @@ export type MarketReceipt = {
 
 export type AuditLog = {
   id: string;
+  businessId?: string;
   actorName: string;
   action: string;
   entityType: string;
