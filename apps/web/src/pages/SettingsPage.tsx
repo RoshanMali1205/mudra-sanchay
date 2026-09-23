@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { InstallAppCard } from "../components/InstallAppCard";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
 import { useMe } from "../hooks";
 
@@ -13,6 +14,7 @@ export function SettingsPage() {
         <p className="muted">{t("more.settingsHint")}</p>
       </header>
       <div className="stack-list">
+        <InstallAppCard />
         <article className="ms-card form-card">
           <div className="row-between">
             <div>

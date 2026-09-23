@@ -6,7 +6,7 @@ The first release records farmer crate quantities by date and trip, calculates f
 
 ## Stack
 
-- React 19 + TypeScript + Vite (PWA-ready web app)
+- React 19 + TypeScript + Vite (installable PWA)
 - Node.js API (local server, Netlify Functions in production)
 - Supabase (Auth, PostgreSQL, Storage) — schema is in `supabase/`
 - pnpm workspaces monorepo
@@ -90,6 +90,14 @@ Every Mudra table policy checks app membership. The other application’s tables
 - Dates use Asia/Kolkata
 - Soft-delete for financial records; hard delete is not exposed in the UI
 - Each login owns a separate business; accounts do not share farmers, trips, payments or expenses unless invited as a member
+
+## Install as a phone app (PWA)
+
+Production builds register a service worker and ship a web app manifest with 192/512 PNG icons.
+
+- **Android Chrome:** browser menu → Install app / Add to Home screen, or **More → Settings → Install**
+- **iPhone Safari:** Share → Add to Home Screen
+- Shell assets work offline; live data still needs network (`/api` is network-only)
 
 ## First sprint slice
 
