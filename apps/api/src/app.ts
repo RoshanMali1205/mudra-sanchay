@@ -44,6 +44,7 @@ import { fail } from "./http.js";
 import {
   captureStoreSnapshot,
   changedStoreSlices,
+  clearBusinessOperationalData,
   ensureBusinessMembership,
   flushToSupabase,
   hydrateFromSupabase,
@@ -927,6 +928,28 @@ app.get("/audit", (c) => {
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   if (user.role !== "admin") return fail(c, 403, "FORBIDDEN", "Only an admin can view the audit trail.");
   return c.json({ data: store.auditLogs });
+});
+
+app.post("/business/clear-data", async (c) => {
+  const user = requireUser(c);
+  if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
+  if (user.role !== "admin") return fail(c, 403, "FORBIDDEN", "Only an admin can clear business data.");
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+
+  const body = (await c.req.json().catch(() => ({}))) as { confirm?: string };
+  if (body.confirm !== "CLEAR") {
+    return fail(c, 400, "CONFIRM_REQUIRED", 'Type CLEAR to confirm wiping farmers, trips, payments, expenses and receipts.');
+  }
+
+  await clearBusinessOperationalData(businessId);
+  audit(user.fullName, "clear", "business", businessId, undefined, { cleared: true });
+  return c.json({
+    data: {
+      ok: true,
+      message: "Business data cleared. Vehicles and routes were kept."
+    }
+  });
 });
 
 app.notFound((c) => fail(c, 404, "NOT_FOUND", "This endpoint does not exist."));

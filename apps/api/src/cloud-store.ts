@@ -433,6 +433,30 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
   }
 }
 
+export async function clearBusinessOperationalData(businessId: string) {
+  const db = supabaseAdmin();
+
+  // Keep business profile, vehicles, routes and memberships — wipe day-to-day records.
+  store.farmers = store.farmers.filter((item) => item.businessId && item.businessId !== businessId);
+  store.trips = store.trips.filter((item) => item.businessId && item.businessId !== businessId);
+  store.payments = store.payments.filter((item) => item.businessId && item.businessId !== businessId);
+  store.expenses = store.expenses.filter((item) => item.businessId && item.businessId !== businessId);
+  store.receipts = store.receipts.filter((item) => item.businessId && item.businessId !== businessId);
+  store.auditLogs = [];
+
+  if (!db) return;
+
+  // Child rows first where FKs require it.
+  assertOk(await db.from("mudra_receipt_payment_events").delete().eq("business_id", businessId), "clear receipt events");
+  assertOk(await db.from("mudra_market_receipts").delete().eq("business_id", businessId), "clear receipts");
+  assertOk(await db.from("mudra_crate_entries").delete().eq("business_id", businessId), "clear crate entries");
+  assertOk(await db.from("mudra_payments").delete().eq("business_id", businessId), "clear payments");
+  assertOk(await db.from("mudra_expenses").delete().eq("business_id", businessId), "clear expenses");
+  assertOk(await db.from("mudra_trips").delete().eq("business_id", businessId), "clear trips");
+  assertOk(await db.from("mudra_farmers").delete().eq("business_id", businessId), "clear farmers");
+  assertOk(await db.from("mudra_audit_logs").delete().eq("business_id", businessId), "clear audit");
+}
+
 export async function ensureBusinessMembership(userId: string, businessId: string) {
   const db = supabaseAdmin();
   if (!db || !businessId) return;
