@@ -115,9 +115,10 @@ export function loadStore(): void {
     store.auditLogs = raw.auditLogs ?? [];
     store.ownerCreated = Boolean(raw.ownerCreated);
 
-    // Backfill business ownership for older local demo data.
-    const fallbackBusinessId = store.businesses[0]?.id;
-    if (fallbackBusinessId) {
+    // Older single-business demo files omitted businessId. Attach those rows only
+    // when exactly one business exists so a second login cannot inherit them.
+    if (store.businesses.length === 1) {
+      const fallbackBusinessId = store.businesses[0]!.id;
       for (const vehicle of store.vehicles) vehicle.businessId ??= fallbackBusinessId;
       for (const route of store.routes) route.businessId ??= fallbackBusinessId;
       for (const farmer of store.farmers) farmer.businessId ??= fallbackBusinessId;
@@ -125,6 +126,7 @@ export function loadStore(): void {
       for (const payment of store.payments) payment.businessId ??= fallbackBusinessId;
       for (const expense of store.expenses) expense.businessId ??= fallbackBusinessId;
       for (const receipt of store.receipts) receipt.businessId ??= fallbackBusinessId;
+      for (const log of store.auditLogs) log.businessId ??= fallbackBusinessId;
     }
   } catch (error) {
     console.warn("Could not load local demo data", error);
@@ -132,6 +134,7 @@ export function loadStore(): void {
 }
 
 export function persistStore(): void {
+  if (process.env.MUDRA_SKIP_PERSIST === "1") return;
   try {
     mkdirSync(dirname(dataFile), { recursive: true });
     const payload: PersistedStore = {
@@ -157,16 +160,71 @@ export function todayKolkata(): string {
   return resolveDateRange("today").to;
 }
 
+let scopedBusinessId: string | null = null;
+let storeQueue: Promise<void> = Promise.resolve();
+
+/** Business whose rows the current request may read or write. */
+export function setScopedBusinessId(businessId: string | null): void {
+  scopedBusinessId = businessId;
+}
+
+export function currentBusinessId(): string | null {
+  return scopedBusinessId;
+}
+
+/**
+ * The API keeps one in-memory working set and swaps it per login.
+ * Hold this lock across hydrate, the handler, and flush so two users
+ * cannot replace or save each other's rows.
+ */
+export function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = storeQueue.then(fn, fn);
+  storeQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+export function resetStore(): void {
+  store.users = [];
+  store.sessions = new Map();
+  store.resetTokens = new Map();
+  store.businesses = [];
+  store.members = [];
+  store.vehicles = [];
+  store.routes = [];
+  store.farmers = [];
+  store.trips = [];
+  store.payments = [];
+  store.expenses = [];
+  store.receipts = [];
+  store.auditLogs = [];
+  store.ownerCreated = false;
+  scopedBusinessId = null;
+}
+
+/** A row belongs to a login only when its business id matches. Missing ids match nobody. */
+export function belongsToBusiness<T extends { businessId?: string | null }>(
+  item: T,
+  businessId: string | null | undefined
+): boolean {
+  return Boolean(businessId) && item.businessId === businessId;
+}
+
 export function audit(
   actorName: string,
   action: string,
   entityType: string,
   entityId: string,
   beforeData?: Record<string, unknown>,
-  afterData?: Record<string, unknown>
+  afterData?: Record<string, unknown>,
+  businessId?: string | null
 ): void {
+  const ownerId = businessId ?? scopedBusinessId;
   store.auditLogs.unshift({
     id: createId(),
+    businessId: ownerId ?? undefined,
     actorName,
     action,
     entityType,
@@ -197,16 +255,13 @@ export function toSessionUser(user: StoredUser): SessionUser {
 }
 
 export function nextFarmerCode(businessId?: string | null): string {
-  const scoped = businessId
-    ? store.farmers.filter((farmer) => !farmer.businessId || farmer.businessId === businessId)
-    : store.farmers;
+  const scoped = businessId ? store.farmers.filter((farmer) => belongsToBusiness(farmer, businessId)) : [];
   const next = scoped.length + 1;
   return `FRM-${String(next).padStart(4, "0")}`;
 }
 
 function inBusiness<T extends { businessId?: string }>(item: T, businessId?: string | null) {
-  if (!businessId) return true;
-  return !item.businessId || item.businessId === businessId;
+  return belongsToBusiness(item, businessId);
 }
 
 export function farmerSummary(

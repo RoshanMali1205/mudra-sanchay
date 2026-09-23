@@ -26,7 +26,25 @@ function clearOperationalStore() {
   store.payments = [];
   store.expenses = [];
   store.receipts = [];
+  store.auditLogs = [];
   store.ownerCreated = false;
+}
+
+/** Rows this login is allowed to save. Other businesses in memory are ignored. */
+export function businessWriteSet(businessId: string) {
+  const trips = store.trips.filter((item) => item.businessId === businessId);
+  return {
+    businesses: store.businesses.filter((item) => item.id === businessId),
+    members: store.members.filter((item) => item.businessId === businessId),
+    vehicles: store.vehicles.filter((item) => item.businessId === businessId),
+    routes: store.routes.filter((item) => item.businessId === businessId),
+    farmers: store.farmers.filter((item) => item.businessId === businessId),
+    trips,
+    payments: store.payments.filter((item) => item.businessId === businessId),
+    expenses: store.expenses.filter((item) => item.businessId === businessId),
+    receipts: store.receipts.filter((item) => item.businessId === businessId),
+    auditLogs: store.auditLogs.filter((item) => item.businessId === businessId)
+  };
 }
 
 /** Load only one business into the in-memory store so logins never share entries. */
@@ -39,7 +57,7 @@ export async function hydrateFromSupabase(businessId?: string | null) {
     return;
   }
 
-  const [businesses, members, vehicles, routes, farmers, trips, entries, payments, expenses, receipts] =
+  const [businesses, members, vehicles, routes, farmers, trips, entries, payments, expenses, receipts, auditLogs] =
     await Promise.all([
       db.from("mudra_businesses").select("*").eq("id", businessId).is("deleted_at", null),
       db.from("mudra_business_members").select("*").eq("business_id", businessId),
@@ -50,7 +68,13 @@ export async function hydrateFromSupabase(businessId?: string | null) {
       db.from("mudra_crate_entries").select("*").eq("business_id", businessId),
       db.from("mudra_payments").select("*").eq("business_id", businessId),
       db.from("mudra_expenses").select("*").eq("business_id", businessId),
-      db.from("mudra_market_receipts").select("*").eq("business_id", businessId)
+      db.from("mudra_market_receipts").select("*").eq("business_id", businessId),
+      db
+        .from("mudra_audit_logs")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("created_at", { ascending: false })
+        .limit(200)
     ]);
 
   for (const [label, result] of [
@@ -63,7 +87,8 @@ export async function hydrateFromSupabase(businessId?: string | null) {
     ["entries", entries],
     ["payments", payments],
     ["expenses", expenses],
-    ["receipts", receipts]
+    ["receipts", receipts],
+    ["audit", auditLogs]
   ] as const) {
     assertOk(result, `hydrate ${label}`);
   }
@@ -170,6 +195,18 @@ export async function hydrateFromSupabase(businessId?: string | null) {
     vendorName: row.vendor_name ?? undefined
   }));
 
+  store.auditLogs = (auditLogs.data ?? []).map((row) => ({
+    id: row.id,
+    businessId: row.business_id ?? businessId,
+    actorName: row.actor_name ?? "",
+    action: row.action,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    beforeData: (row.before_data as Record<string, unknown> | null) ?? undefined,
+    afterData: (row.after_data as Record<string, unknown> | null) ?? undefined,
+    createdAt: row.created_at
+  }));
+
   store.receipts = (receipts.data ?? []).map((row) => ({
     id: row.id,
     businessId: row.business_id,
@@ -203,7 +240,8 @@ export type StoreSlice =
   | "entries"
   | "payments"
   | "expenses"
-  | "receipts";
+  | "receipts"
+  | "audit";
 
 export type StoreSnapshot = Record<StoreSlice, string>;
 
@@ -221,7 +259,8 @@ export function captureStoreSnapshot(): StoreSnapshot {
     entries: JSON.stringify(store.trips.map((trip) => ({ tripId: trip.id, entries: trip.entries }))),
     payments: JSON.stringify(store.payments),
     expenses: JSON.stringify(store.expenses),
-    receipts: JSON.stringify(store.receipts)
+    receipts: JSON.stringify(store.receipts),
+    audit: JSON.stringify(store.auditLogs)
   };
 }
 
@@ -233,21 +272,20 @@ export function changedStoreSlices(before: StoreSnapshot, after: StoreSnapshot =
   return dirty;
 }
 
-export async function flushToSupabase(dirty?: Set<StoreSlice>) {
+export async function flushToSupabase(businessId?: string | null, dirty?: Set<StoreSlice>) {
   const db = supabaseAdmin();
-  if (!db) return;
-  const businessId = store.businesses[0]?.id;
-  if (!businessId) return;
+  if (!db || !businessId) return;
   // Empty dirty set = nothing changed this request; skip all writes.
   if (dirty && dirty.size === 0) return;
 
+  const scoped = businessWriteSet(businessId);
   const writeAll = !dirty;
   const should = (slice: StoreSlice) => writeAll || Boolean(dirty?.has(slice));
 
-  if (should("businesses") && store.businesses.length) {
+  if (should("businesses") && scoped.businesses.length) {
     assertOk(
       await db.from("mudra_businesses").upsert(
-        store.businesses.map((item) => ({
+        scoped.businesses.map((item) => ({
           id: item.id,
           name: item.name,
           print_name: item.printName,
@@ -263,11 +301,11 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
     );
   }
 
-  if (should("members") && store.members.length) {
+  if (should("members") && scoped.members.length) {
     assertOk(
       await db.from("mudra_business_members").upsert(
-        store.members.map((item) => ({
-          business_id: item.businessId,
+        scoped.members.map((item) => ({
+          business_id: businessId,
           user_id: item.userId,
           role: item.role,
           status: "active"
@@ -278,12 +316,12 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
     );
   }
 
-  if (should("vehicles") && store.vehicles.length) {
+  if (should("vehicles") && scoped.vehicles.length) {
     assertOk(
       await db.from("mudra_vehicles").upsert(
-        store.vehicles.map((item) => ({
+        scoped.vehicles.map((item) => ({
           id: item.id,
-          business_id: item.businessId ?? businessId,
+          business_id: businessId,
           registration_number: item.registrationNumber,
           display_name: item.displayName,
           active: item.active
@@ -293,12 +331,12 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
     );
   }
 
-  if (should("routes") && store.routes.length) {
+  if (should("routes") && scoped.routes.length) {
     assertOk(
       await db.from("mudra_routes").upsert(
-        store.routes.map((item) => ({
+        scoped.routes.map((item) => ({
           id: item.id,
-          business_id: item.businessId ?? businessId,
+          business_id: businessId,
           origin_name: item.originName,
           destination_name: item.destinationName,
           default_rate_paise: item.defaultRatePaise,
@@ -309,12 +347,12 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
     );
   }
 
-  if (should("farmers") && store.farmers.length) {
+  if (should("farmers") && scoped.farmers.length) {
     assertOk(
       await db.from("mudra_farmers").upsert(
-        store.farmers.map((item) => ({
+        scoped.farmers.map((item) => ({
           id: item.id,
-          business_id: item.businessId ?? businessId,
+          business_id: businessId,
           farmer_code: item.farmerCode,
           full_name: item.fullName,
           mobile: item.mobile ?? null,
@@ -328,12 +366,12 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
     );
   }
 
-  if (should("trips") && store.trips.length) {
+  if (should("trips") && scoped.trips.length) {
     assertOk(
       await db.from("mudra_trips").upsert(
-        store.trips.map((item) => ({
+        scoped.trips.map((item) => ({
           id: item.id,
-          business_id: item.businessId ?? businessId,
+          business_id: businessId,
           trip_date: item.tripDate,
           trip_number: item.tripNumber,
           vehicle_id: item.vehicleId,
@@ -348,10 +386,10 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
 
   if (should("entries")) {
     assertOk(await db.from("mudra_crate_entries").delete().eq("business_id", businessId), "clear crate entries");
-    if (store.trips.some((trip) => trip.entries.length)) {
+    if (scoped.trips.some((trip) => trip.entries.length)) {
       assertOk(
         await db.from("mudra_crate_entries").insert(
-          store.trips.flatMap((trip) =>
+          scoped.trips.flatMap((trip) =>
             trip.entries.map((entry) => ({
               id: entry.id,
               business_id: businessId,
@@ -372,10 +410,10 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
 
   if (should("payments")) {
     assertOk(await db.from("mudra_payments").delete().eq("business_id", businessId), "clear payments");
-    if (store.payments.length) {
+    if (scoped.payments.length) {
       assertOk(
         await db.from("mudra_payments").insert(
-          store.payments.map((item) => ({
+          scoped.payments.map((item) => ({
             id: item.id,
             business_id: businessId,
             farmer_id: item.farmerId,
@@ -392,10 +430,10 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
 
   if (should("expenses")) {
     assertOk(await db.from("mudra_expenses").delete().eq("business_id", businessId), "clear expenses");
-    if (store.expenses.length) {
+    if (scoped.expenses.length) {
       assertOk(
         await db.from("mudra_expenses").insert(
-          store.expenses.map((item) => ({
+          scoped.expenses.map((item) => ({
             id: item.id,
             business_id: businessId,
             expense_date: item.expenseDate,
@@ -411,10 +449,10 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
 
   if (should("receipts")) {
     assertOk(await db.from("mudra_market_receipts").delete().eq("business_id", businessId), "clear receipts");
-    if (store.receipts.length) {
+    if (scoped.receipts.length) {
       assertOk(
         await db.from("mudra_market_receipts").insert(
-          store.receipts.map((item) => ({
+          scoped.receipts.map((item) => ({
             id: item.id,
             business_id: businessId,
             farmer_id: item.farmerId ?? null,
@@ -430,6 +468,25 @@ export async function flushToSupabase(dirty?: Set<StoreSlice>) {
         "flush receipts"
       );
     }
+  }
+
+  if (should("audit") && scoped.auditLogs.length) {
+    assertOk(
+      await db.from("mudra_audit_logs").upsert(
+        scoped.auditLogs.map((item) => ({
+          id: item.id,
+          business_id: businessId,
+          actor_name: item.actorName,
+          action: item.action,
+          entity_type: item.entityType,
+          entity_id: item.entityId,
+          before_data: item.beforeData ?? null,
+          after_data: item.afterData ?? null,
+          created_at: item.createdAt
+        }))
+      ),
+      "flush audit"
+    );
   }
 }
 
@@ -469,12 +526,16 @@ export async function sessionFromToken(token: string | undefined): Promise<Sessi
   if (!membership) return null;
 
   const { data: profile } = await db.from("mudra_profiles").select("*").eq("id", data.user.id).maybeSingle();
-  const { data: bizMember } = await db
+  // Keep the membership this user joined first so a second business row
+  // cannot hide the farmers and trips they already saved.
+  const { data: bizMembers } = await db
     .from("mudra_business_members")
-    .select("business_id, role")
+    .select("business_id, role, created_at")
     .eq("user_id", data.user.id)
     .eq("status", "active")
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const bizMember = bizMembers?.[0] ?? null;
 
   const stored: StoredUser = {
     id: data.user.id,

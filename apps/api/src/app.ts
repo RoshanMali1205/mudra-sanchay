@@ -26,7 +26,9 @@ import {
 import {
   addReceiptEvent,
   audit,
+  belongsToBusiness,
   createId,
+  currentBusinessId,
   dailySheet,
   dashboardSummary,
   farmerLedger,
@@ -35,10 +37,12 @@ import {
   nextFarmerCode,
   nowIso,
   persistStore,
+  setScopedBusinessId,
   store,
   syncReceiptStatus,
   toSessionUser,
-  tripTotals
+  tripTotals,
+  withStoreLock
 } from "./store.js";
 import { fail } from "./http.js";
 import {
@@ -77,35 +81,42 @@ function resolveOrigin(origin: string): string {
 }
 
 app.use("*", async (c, next) => {
-  const requestId = c.req.header("x-request-id") ?? createId();
-  c.set("requestId", requestId);
-  c.header("x-request-id", requestId);
+  await withStoreLock(async () => {
+    const requestId = c.req.header("x-request-id") ?? createId();
+    c.set("requestId", requestId);
+    c.header("x-request-id", requestId);
 
-  const token = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
-  if (isSupabaseEnabled()) {
-    c.set("user", await sessionFromToken(token));
-  } else {
-    const stored = getUserByToken(token);
-    c.set("user", stored ? toSessionUser(stored) : null);
-  }
-
-  // Hydrate only this login's business so accounts never share entries.
-  if (isSupabaseEnabled() && !c.req.path.endsWith("/health")) {
-    await hydrateFromSupabase(c.get("user")?.businessId ?? null);
-  }
-
-  const before = isSupabaseEnabled() ? captureStoreSnapshot() : null;
-  await next();
-
-  const mutating = ["POST", "PATCH", "PUT", "DELETE"].includes(c.req.method);
-  const ok = c.res.status >= 200 && c.res.status < 300;
-  if (isSupabaseEnabled()) {
-    if (mutating && ok && !c.req.path.endsWith("/health") && before) {
-      await flushToSupabase(changedStoreSlices(before));
+    const token = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+    if (isSupabaseEnabled()) {
+      c.set("user", await sessionFromToken(token));
+    } else {
+      const stored = getUserByToken(token);
+      c.set("user", stored ? toSessionUser(stored) : null);
     }
-  } else if (mutating && ok) {
-    persistStore();
-  }
+
+    const user = c.get("user");
+    setScopedBusinessId(user?.businessId ?? null);
+
+    // Hydrate only this login's business so accounts never share entries.
+    if (isSupabaseEnabled() && !c.req.path.endsWith("/health")) {
+      await hydrateFromSupabase(user?.businessId ?? null);
+    }
+
+    const before = isSupabaseEnabled() ? captureStoreSnapshot() : null;
+    await next();
+
+    const mutating = ["POST", "PATCH", "PUT", "DELETE"].includes(c.req.method);
+    const ok = c.res.status >= 200 && c.res.status < 300;
+    if (isSupabaseEnabled()) {
+      if (mutating && ok && !c.req.path.endsWith("/health") && before) {
+        const businessId = currentBusinessId() ?? membershipBusinessId(c.get("user"));
+        await flushToSupabase(businessId, changedStoreSlices(before));
+      }
+    } else if (mutating && ok) {
+      persistStore();
+    }
+    setScopedBusinessId(null);
+  });
 });
 
 app.use(
@@ -125,9 +136,14 @@ function requireBusinessId(user: SessionUser) {
   return user.businessId;
 }
 
+function membershipBusinessId(user: SessionUser | null) {
+  if (!user) return null;
+  return store.members.find((member) => member.userId === user.id)?.businessId ?? null;
+}
+
 function forBusiness<T extends { businessId?: string }>(items: T[], businessId: string | null | undefined) {
   if (!businessId) return [] as T[];
-  return items.filter((item) => !item.businessId || item.businessId === businessId);
+  return items.filter((item) => belongsToBusiness(item, businessId));
 }
 
 app.get("/health", (c) => {
@@ -294,7 +310,8 @@ app.post("/auth/bootstrap", async (c) => {
     active: true
   });
   store.ownerCreated = true;
-  audit(user.fullName, "bootstrap", "business", businessId, undefined, { name: parsed.data.businessName });
+  setScopedBusinessId(businessId);
+  audit(user.fullName, "bootstrap", "business", businessId, undefined, { name: parsed.data.businessName }, businessId);
 
   if (isSupabaseEnabled()) {
     await ensureBusinessMembership(user.id, businessId);
@@ -516,7 +533,7 @@ app.post("/trips/:id/entries", async (c) => {
   if (trip.entries.some((entry) => entry.farmerId === farmer.id && entry.crateType === parsed.data.crateType)) {
     return fail(c, 409, "DUPLICATE_FARMER", "This farmer already has that crate type on the trip.");
   }
-  const business = store.businesses.find((item) => item.id === businessId) ?? store.businesses[0];
+  const business = store.businesses.find((item) => item.id === businessId);
   const route = forBusiness(store.routes, businessId).find((item) => item.id === trip.routeId);
   const resolved = resolveFreightRate({
     manualRatePaise: parsed.data.ratePaise,
@@ -613,7 +630,7 @@ app.post("/trips/:id/copy-farmers", async (c) => {
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Select farmers from a previous trip.");
   const source = forBusiness(store.trips, businessId).find((item) => item.id === parsed.data.sourceTripId);
   if (!source) return fail(c, 404, "NOT_FOUND", "Source trip was not found.");
-  const business = store.businesses.find((item) => item.id === businessId) ?? store.businesses[0];
+  const business = store.businesses.find((item) => item.id === businessId);
   const route = forBusiness(store.routes, businessId).find((item) => item.id === trip.routeId);
   for (const farmerId of parsed.data.farmerIds) {
     const sourceEntries = source.entries.filter((entry) => entry.farmerId === farmerId);
@@ -926,7 +943,9 @@ app.get("/audit", (c) => {
   const user = requireUser(c);
   if (!user) return fail(c, 401, "UNAUTHENTICATED", "Please sign in again.");
   if (user.role !== "admin") return fail(c, 403, "FORBIDDEN", "Only an admin can view the audit trail.");
-  return c.json({ data: store.auditLogs });
+  const businessId = requireBusinessId(user);
+  if (!businessId) return fail(c, 409, "NOT_ONBOARDED", "Finish business setup first.");
+  return c.json({ data: store.auditLogs.filter((log) => belongsToBusiness(log, businessId)) });
 });
 
 app.notFound((c) => fail(c, 404, "NOT_FOUND", "This endpoint does not exist."));
