@@ -3,8 +3,8 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  CRATE_TYPES,
   calculateFreightPaise,
+  CRATE_TYPE_CODES,
   formatInrFromPaise,
   rupeesToPaise,
   type FarmerSummary,
@@ -25,8 +25,8 @@ export function NewTripPage() {
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [reopenReason, setReopenReason] = useState("");
-  const [crates, setCrates] = useState(50);
   const [rateRupees, setRateRupees] = useState(25);
+  const [typeCounts, setTypeCounts] = useState<Record<string, string>>(emptyTypeCounts());
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: () => api<Vehicle[]>("/vehicles") });
@@ -34,7 +34,11 @@ export function NewTripPage() {
   const { data: farmers = [] } = useQuery({ queryKey: ["farmers"], queryFn: () => api<FarmerSummary[]>("/farmers") });
   const { data: trips = [] } = useQuery({ queryKey: ["trips"], queryFn: () => api<Trip[]>("/trips") });
 
-  useQuery({
+  const {
+    isLoading: tripLoading,
+    isError: tripLoadError,
+    error: tripError
+  } = useQuery({
     queryKey: ["trip", tripId],
     enabled: Boolean(tripId),
     queryFn: async () => {
@@ -44,15 +48,18 @@ export function NewTripPage() {
     }
   });
 
+  const previewCrates = CRATE_TYPE_CODES.reduce((sum, code) => sum + (Number(typeCounts[code]) || 0), 0);
   const preview = useMemo(() => {
     try {
-      return calculateFreightPaise(crates, rupeesToPaise(rateRupees));
+      return previewCrates > 0 ? calculateFreightPaise(previewCrates, rupeesToPaise(rateRupees)) : 0;
     } catch {
       return 0;
     }
-  }, [crates, rateRupees]);
+  }, [previewCrates, rateRupees]);
 
   const previousTrip = trips.find((item) => item.id !== trip?.id && item.entries.length > 0);
+  const uniqueFarmerCount =
+    trip?.farmerCount ?? (trip ? new Set(trip.entries.map((entry) => entry.farmerId)).size : 0);
 
   async function createTrip(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,22 +84,40 @@ export function NewTripPage() {
   }
 
   const addEntry = useMutation({
-    mutationFn: async (form: FormData) => {
+    mutationFn: async (input: {
+      farmerId: string;
+      ratePaise: number;
+      lines: Array<{ crateType: (typeof CRATE_TYPE_CODES)[number]; crateCount: number }>;
+    }) => {
       if (!trip) throw new Error("Trip missing");
-      return api(`/trips/${trip.id}/entries`, {
-        method: "POST",
-        body: JSON.stringify({
-          farmerId: form.get("farmerId"),
-          crateType: form.get("crateType"),
-          crateCount: Number(form.get("crateCount")),
-          ratePaise: rupeesToPaise(Number(form.get("rateRupees") || 25))
-        })
-      });
+      let current = trip;
+      for (const line of input.lines) {
+        const existing = current.entries.find(
+          (entry) => entry.farmerId === input.farmerId && entry.crateType === line.crateType
+        );
+        current = existing
+          ? await api<Trip>(`/trips/${trip.id}/entries/${existing.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ crateCount: line.crateCount, ratePaise: input.ratePaise })
+            })
+          : await api<Trip>(`/trips/${trip.id}/entries`, {
+              method: "POST",
+              body: JSON.stringify({
+                farmerId: input.farmerId,
+                crateType: line.crateType,
+                crateCount: line.crateCount,
+                ratePaise: input.ratePaise
+              })
+            });
+      }
+      return current;
     },
-    onSuccess: async () => {
-      if (!trip) return;
-      setTrip(await api<Trip>(`/trips/${trip.id}`));
+    onSuccess: (updated) => {
+      setTrip(updated);
       setState("saved");
+      setError("");
+      setRateRupees(25);
+      setTypeCounts(emptyTypeCounts());
     },
     onError: (err) => {
       setState("error");
@@ -102,15 +127,34 @@ export function NewTripPage() {
 
   async function updateEntry(entryId: string, crateCount: number) {
     if (!trip) return;
+    const previous = trip;
+    const entries = trip.entries.map((entry) =>
+      entry.id === entryId
+        ? {
+            ...entry,
+            crateCount,
+            freightAmountPaise: calculateFreightPaise(crateCount, entry.ratePaise)
+          }
+        : entry
+    );
+    // Optimistic update so freight totals refresh immediately while the API saves.
+    setTrip({
+      ...trip,
+      entries,
+      totalCrates: entries.reduce((sum, entry) => sum + entry.crateCount, 0),
+      totalFreightPaise: entries.reduce((sum, entry) => sum + entry.freightAmountPaise, 0),
+      farmerCount: new Set(entries.map((entry) => entry.farmerId)).size
+    });
     setState("saving");
     try {
-      await api(`/trips/${trip.id}/entries/${entryId}`, {
+      const updated = await api<Trip>(`/trips/${trip.id}/entries/${entryId}`, {
         method: "PATCH",
         body: JSON.stringify({ crateCount })
       });
-      setTrip(await api<Trip>(`/trips/${trip.id}`));
+      setTrip(updated);
       setState("saved");
     } catch (err) {
+      setTrip(previous);
       setState("error");
       setError(err instanceof Error ? err.message : t("status.error"));
     }
@@ -118,8 +162,8 @@ export function NewTripPage() {
 
   async function removeEntry(entryId: string) {
     if (!trip) return;
-    await api(`/trips/${trip.id}/entries/${entryId}`, { method: "DELETE" });
-    setTrip(await api<Trip>(`/trips/${trip.id}`));
+    const updated = await api<Trip>(`/trips/${trip.id}/entries/${entryId}`, { method: "DELETE" });
+    setTrip(updated);
   }
 
   async function completeTrip() {
@@ -164,8 +208,17 @@ export function NewTripPage() {
         <h1>{trip ? `${t("trip.number")} ${trip.tripNumber}` : t("trip.new")}</h1>
         <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
       </header>
-      {!trip ? (
-        <form className="ms-card list-card" onSubmit={(event) => void createTrip(event)}>
+      {tripId && tripLoading ? <p className="muted">{t("status.saving")}</p> : null}
+      {tripId && tripLoadError ? (
+        <div className="ms-card form-card">
+          <p className="ms-error">{tripError instanceof Error ? tripError.message : t("status.error")}</p>
+          <Link className="ms-btn ms-btn-ghost" to="/trips">
+            {t("nav.trips")}
+          </Link>
+        </div>
+      ) : null}
+      {!trip && !tripId ? (
+        <form className="ms-card form-card" onSubmit={(event) => void createTrip(event)}>
           <label className="ms-field">
             <span className="ms-label">{t("trip.date")}</span>
             <input name="tripDate" type="date" defaultValue={today} required />
@@ -191,40 +244,56 @@ export function NewTripPage() {
             </select>
           </label>
           {error ? <p className="ms-error">{error}</p> : null}
-          <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
-            {t("action.continue")}
-          </button>
+          <div className="form-actions">
+            <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
+              {t("action.continue")}
+            </button>
+          </div>
         </form>
-      ) : (
+      ) : trip ? (
         <>
-          <article className="ms-card list-card">
+          <article className="ms-card form-card">
             <div className="row-between">
               <strong>
                 {trip.tripDate} · {t("trip.number")} {trip.tripNumber}
               </strong>
-              <span>{t(`trip.${trip.status}`)}</span>
+              <span className="entity-code">{t(`trip.${trip.status}`)}</span>
             </div>
-            <p>
-              {t("trip.totals")}: {trip.farmerCount ?? new Set(trip.entries.map((entry) => entry.farmerId)).size}{" "}
+            <p style={{ margin: 0 }}>
+              {t("trip.totals")}: {uniqueFarmerCount}{" "}
               {t("trip.farmersCount")} · {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
             </p>
-            <CrateTypeTotals entries={trip.entries} />
             {trip.status === "draft" && previousTrip ? (
-              <button className="ms-btn ms-btn-ghost" onClick={() => void copyFarmers()}>
-                {t("trip.copyFarmers")}
-              </button>
+              <div className="form-actions">
+                <button className="ms-btn ms-btn-ghost" onClick={() => void copyFarmers()}>
+                  {t("trip.copyFarmers")}
+                </button>
+              </div>
             ) : null}
           </article>
           {trip.status === "draft" ? (
             <form
-              className="ms-card list-card"
+              className="ms-card form-card"
+              style={{ marginTop: 14 }}
               onSubmit={(event) => {
                 event.preventDefault();
+                const form = new FormData(event.currentTarget);
+                const lines = CRATE_TYPE_CODES.flatMap((code) => {
+                  const crateCount = Number(typeCounts[code]);
+                  return crateCount > 0 ? [{ crateType: code, crateCount }] : [];
+                });
+                if (lines.length === 0) {
+                  setState("error");
+                  setError(t("trip.crateTypesRequired"));
+                  return;
+                }
                 setState("saving");
-                addEntry.mutate(new FormData(event.currentTarget));
-                event.currentTarget.reset();
-                setCrates(50);
-                setRateRupees(25);
+                setError("");
+                addEntry.mutate({
+                  farmerId: String(form.get("farmerId")),
+                  ratePaise: rupeesToPaise(Number(form.get("rateRupees") || 25)),
+                  lines
+                });
               }}
             >
               <label className="ms-field">
@@ -237,31 +306,25 @@ export function NewTripPage() {
                   ))}
                 </select>
               </label>
-              <label className="ms-field">
-                <span className="ms-label">{t("trip.crateType")}</span>
-                <select name="crateType" required defaultValue="">
-                  <option value="" disabled>
-                    {t("trip.crateTypeRequired")}
-                  </option>
-                  {CRATE_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {t(`crateType.${type}`)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="ms-field">
-                <span className="ms-label">{t("trip.crates")}</span>
-                <input
-                  name="crateCount"
-                  type="number"
-                  min={1}
-                  inputMode="numeric"
-                  required
-                  value={crates}
-                  onChange={(event) => setCrates(Number(event.target.value))}
-                />
-              </label>
+              <p className="muted" style={{ margin: 0 }}>
+                {t("trip.crateTypesHint")}
+              </p>
+              {CRATE_TYPE_CODES.map((code) => (
+                <label className="ms-field" key={code}>
+                  <span className="ms-label">{t(`trip.crateType.${code}`)}</span>
+                  <input
+                    name={`count_${code}`}
+                    type="number"
+                    min={0}
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={typeCounts[code] ?? ""}
+                    onChange={(event) =>
+                      setTypeCounts((current) => ({ ...current, [code]: event.target.value }))
+                    }
+                  />
+                </label>
+              ))}
               <label className="ms-field">
                 <span className="ms-label">{t("trip.rate")}</span>
                 <input
@@ -272,23 +335,29 @@ export function NewTripPage() {
                   onChange={(event) => setRateRupees(Number(event.target.value))}
                 />
               </label>
-              <p>
+              <p style={{ margin: 0 }}>
                 {t("trip.freightPreview")}: {formatInrFromPaise(preview)} · {t("trip.rateSource")}: manual
               </p>
               {error ? <p className="ms-error">{error}</p> : null}
-              <button className="ms-btn ms-btn-primary" disabled={addEntry.isPending}>
-                {t("trip.addEntry")}
-              </button>
+              <div className="form-actions">
+                <button className="ms-btn ms-btn-primary" disabled={addEntry.isPending}>
+                  {t("trip.addEntry")}
+                </button>
+              </div>
             </form>
           ) : null}
-          {trip.entries.map((entry) => {
-            const farmerDue = farmers.find((farmer) => farmer.id === entry.farmerId)?.outstandingPaise;
+          <div className="stack-list" style={{ marginTop: 14 }}>
+          {groupEntriesByFarmer(trip.entries).map((entries) => {
+            const first = entries[0];
+            if (!first) return null;
+            const farmerDue = farmers.find((farmer) => farmer.id === first.farmerId)?.outstandingPaise;
+            const farmerCrates = entries.reduce((sum, entry) => sum + entry.crateCount, 0);
+            const farmerFreight = entries.reduce((sum, entry) => sum + entry.freightAmountPaise, 0);
             return (
-            <article key={entry.id} className="list-card ms-card" style={{ marginTop: 12 }}>
-              <strong>{entry.farmerName}</strong>
+            <article key={first.farmerId} className="ms-card form-card">
+              <strong>{first.farmerName}</strong>
               <p className="muted">
-                {entry.crateType ? `${t(`crateType.${entry.crateType}`)} · ` : ""}
-                {entry.crateCount || "—"} {t("trip.crates")} · {formatInrFromPaise(entry.freightAmountPaise)} · {entry.rateSource}
+                {farmerCrates} {t("trip.crates")} · {formatInrFromPaise(farmerFreight)}
                 {farmerDue != null ? (
                   <>
                     {" · "}
@@ -298,49 +367,64 @@ export function NewTripPage() {
                   </>
                 ) : null}
               </p>
-              {trip.status === "draft" ? (
-                <div className="row-between">
-                  <input
-                    type="number"
-                    min={1}
-                    defaultValue={entry.crateCount || ""}
-                    onBlur={(event) => {
-                      const value = Number(event.target.value);
-                      if (value > 0) void updateEntry(entry.id, value);
-                    }}
-                  />
-                  <button className="ms-btn ms-btn-ghost" onClick={() => void removeEntry(entry.id)}>
-                    {t("action.remove")}
-                  </button>
+              {entries.map((entry) => (
+                <div key={entry.id} className="row-between" style={{ marginTop: 8 }}>
+                  <span>
+                    {entry.crateType ? t(`trip.crateType.${entry.crateType}`) : t("trip.crates")} · {entry.crateCount || "—"}
+                  </span>
+                  {trip.status === "draft" ? (
+                    <span className="row-between" style={{ gap: 8 }}>
+                      <input
+                        className="ms-control"
+                        type="number"
+                        min={1}
+                        defaultValue={entry.crateCount || ""}
+                        onBlur={(event) => {
+                          const value = Number(event.target.value);
+                          if (value > 0) void updateEntry(entry.id, value);
+                        }}
+                      />
+                      <button className="ms-btn ms-btn-ghost" onClick={() => void removeEntry(entry.id)}>
+                        {t("action.remove")}
+                      </button>
+                    </span>
+                  ) : (
+                    <span>{formatInrFromPaise(entry.freightAmountPaise)}</span>
+                  )}
                 </div>
-              ) : null}
+              ))}
             </article>
             );
           })}
+          </div>
           {trip.status === "draft" ? (
-            <button className="ms-btn ms-btn-accent" style={{ marginTop: 16 }} onClick={() => setConfirmComplete(true)}>
-              {t("action.completeTrip")}
-            </button>
+            <div className="form-actions" style={{ marginTop: 16 }}>
+              <button className="ms-btn ms-btn-accent" onClick={() => setConfirmComplete(true)}>
+                {t("action.completeTrip")}
+              </button>
+            </div>
           ) : (
-            <div className="ms-card list-card" style={{ marginTop: 16 }}>
+            <div className="ms-card form-card" style={{ marginTop: 16 }}>
               <label className="ms-field">
                 <span className="ms-label">{t("trip.reopenReason")}</span>
                 <input value={reopenReason} onChange={(event) => setReopenReason(event.target.value)} />
               </label>
-              <button className="ms-btn ms-btn-ghost" disabled={reopenReason.length < 3} onClick={() => void reopen()}>
-                {t("action.reopen")}
-              </button>
+              <div className="form-actions">
+                <button className="ms-btn ms-btn-ghost" disabled={reopenReason.length < 3} onClick={() => void reopen()}>
+                  {t("action.reopen")}
+                </button>
+              </div>
             </div>
           )}
           <p>
             <Link to="/trips">{t("nav.trips")}</Link>
           </p>
         </>
-      )}
+      ) : null}
       {confirmComplete ? (
         <ConfirmDialog
           title={t("action.completeTrip")}
-          body={`${t("trip.confirmComplete")} ${trip?.entries.length} ${t("nav.farmers")}, ${trip?.totalCrates} ${t("trip.crates")}, ${formatInrFromPaise(trip?.totalFreightPaise ?? 0)}.`}
+          body={`${t("trip.confirmComplete")} ${uniqueFarmerCount} ${t("nav.farmers")}, ${trip?.totalCrates} ${t("trip.crates")}, ${formatInrFromPaise(trip?.totalFreightPaise ?? 0)}.`}
           confirmLabel={t("action.confirm")}
           cancelLabel={t("action.cancel")}
           onCancel={() => setConfirmComplete(false)}
@@ -354,18 +438,16 @@ export function NewTripPage() {
   );
 }
 
-function CrateTypeTotals({ entries }: { entries: Trip["entries"] }) {
-  const { t } = useTranslation();
-  const totals = CRATE_TYPES.map((type) => ({
-    type,
-    count: entries.filter((entry) => entry.crateType === type).reduce((sum, entry) => sum + entry.crateCount, 0)
-  })).filter((item) => item.count > 0);
+function emptyTypeCounts() {
+  return Object.fromEntries(CRATE_TYPE_CODES.map((code) => [code, ""]));
+}
 
-  if (totals.length === 0) return null;
-
-  return (
-    <p className="muted">
-      {totals.map((item) => `${t(`crateType.${item.type}`)} ${item.count}`).join(" · ")}
-    </p>
-  );
+function groupEntriesByFarmer(entries: Trip["entries"]) {
+  const groups = new Map<string, Trip["entries"]>();
+  for (const entry of entries) {
+    const current = groups.get(entry.farmerId) ?? [];
+    current.push(entry);
+    groups.set(entry.farmerId, current);
+  }
+  return [...groups.values()];
 }

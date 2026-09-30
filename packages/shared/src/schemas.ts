@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CRATE_TYPES, MAX_CRATE_COUNT, PAYMENT_MODES } from "./constants.js";
+import { CRATE_TYPE_CODES, MAX_CRATE_COUNT, PAYMENT_MODES } from "./constants.js";
 
 export const uuidSchema = z.string().uuid();
 
@@ -60,9 +60,11 @@ export const tripCreateSchema = z.object({
   notes: z.string().max(500).optional()
 });
 
+export const crateTypeSchema = z.enum(CRATE_TYPE_CODES);
+
 export const crateEntryCreateSchema = z.object({
   farmerId: uuidSchema,
-  crateType: z.enum(CRATE_TYPES),
+  crateType: crateTypeSchema,
   crateCount: crateCountSchema,
   ratePaise: z.number().int().nonnegative().optional(),
   notes: z.string().max(240).optional()
@@ -70,7 +72,7 @@ export const crateEntryCreateSchema = z.object({
 
 export const crateEntryPatchSchema = z.object({
   farmerId: uuidSchema.optional(),
-  crateType: z.enum(CRATE_TYPES).optional(),
+  crateType: crateTypeSchema.optional(),
   crateCount: z.number().int().nonnegative().max(MAX_CRATE_COUNT).optional(),
   ratePaise: z.number().int().nonnegative().optional(),
   notes: z.string().max(240).optional()

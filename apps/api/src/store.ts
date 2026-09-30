@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  CRATE_TYPE_LABELS,
   inRange,
   resolveDateRange,
   type AuditLog,
@@ -99,19 +98,43 @@ export function loadStore(): void {
     store.farmers = raw.farmers ?? [];
     store.trips = (raw.trips ?? []).map((trip) => ({
       ...trip,
-      ...tripTotals(trip.entries ?? [])
+      entries: (trip.entries ?? []).map((entry) => ({
+        ...entry,
+        crateType: entry.crateType ?? "golti"
+      })),
+      ...tripTotals(
+        (trip.entries ?? []).map((entry) => ({
+          ...entry,
+          crateType: entry.crateType ?? "golti"
+        }))
+      )
     }));
     store.payments = raw.payments ?? [];
     store.expenses = raw.expenses ?? [];
     store.receipts = raw.receipts ?? [];
     store.auditLogs = raw.auditLogs ?? [];
     store.ownerCreated = Boolean(raw.ownerCreated);
+
+    // Older single-business demo files omitted businessId. Attach those rows only
+    // when exactly one business exists so a second login cannot inherit them.
+    if (store.businesses.length === 1) {
+      const fallbackBusinessId = store.businesses[0]!.id;
+      for (const vehicle of store.vehicles) vehicle.businessId ??= fallbackBusinessId;
+      for (const route of store.routes) route.businessId ??= fallbackBusinessId;
+      for (const farmer of store.farmers) farmer.businessId ??= fallbackBusinessId;
+      for (const trip of store.trips) trip.businessId ??= fallbackBusinessId;
+      for (const payment of store.payments) payment.businessId ??= fallbackBusinessId;
+      for (const expense of store.expenses) expense.businessId ??= fallbackBusinessId;
+      for (const receipt of store.receipts) receipt.businessId ??= fallbackBusinessId;
+      for (const log of store.auditLogs) log.businessId ??= fallbackBusinessId;
+    }
   } catch (error) {
     console.warn("Could not load local demo data", error);
   }
 }
 
 export function persistStore(): void {
+  if (process.env.MUDRA_SKIP_PERSIST === "1") return;
   try {
     mkdirSync(dirname(dataFile), { recursive: true });
     const payload: PersistedStore = {
@@ -137,16 +160,71 @@ export function todayKolkata(): string {
   return resolveDateRange("today").to;
 }
 
+let scopedBusinessId: string | null = null;
+let storeQueue: Promise<void> = Promise.resolve();
+
+/** Business whose rows the current request may read or write. */
+export function setScopedBusinessId(businessId: string | null): void {
+  scopedBusinessId = businessId;
+}
+
+export function currentBusinessId(): string | null {
+  return scopedBusinessId;
+}
+
+/**
+ * The API keeps one in-memory working set and swaps it per login.
+ * Hold this lock across hydrate, the handler, and flush so two users
+ * cannot replace or save each other's rows.
+ */
+export function withStoreLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = storeQueue.then(fn, fn);
+  storeQueue = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+export function resetStore(): void {
+  store.users = [];
+  store.sessions = new Map();
+  store.resetTokens = new Map();
+  store.businesses = [];
+  store.members = [];
+  store.vehicles = [];
+  store.routes = [];
+  store.farmers = [];
+  store.trips = [];
+  store.payments = [];
+  store.expenses = [];
+  store.receipts = [];
+  store.auditLogs = [];
+  store.ownerCreated = false;
+  scopedBusinessId = null;
+}
+
+/** A row belongs to a login only when its business id matches. Missing ids match nobody. */
+export function belongsToBusiness<T extends { businessId?: string | null }>(
+  item: T,
+  businessId: string | null | undefined
+): boolean {
+  return Boolean(businessId) && item.businessId === businessId;
+}
+
 export function audit(
   actorName: string,
   action: string,
   entityType: string,
   entityId: string,
   beforeData?: Record<string, unknown>,
-  afterData?: Record<string, unknown>
+  afterData?: Record<string, unknown>,
+  businessId?: string | null
 ): void {
+  const ownerId = businessId ?? scopedBusinessId;
   store.auditLogs.unshift({
     id: createId(),
+    businessId: ownerId ?? undefined,
     actorName,
     action,
     entityType,
@@ -176,13 +254,25 @@ export function toSessionUser(user: StoredUser): SessionUser {
   };
 }
 
-export function nextFarmerCode(): string {
-  const next = store.farmers.length + 1;
+export function nextFarmerCode(businessId?: string | null): string {
+  const scoped = businessId ? store.farmers.filter((farmer) => belongsToBusiness(farmer, businessId)) : [];
+  const next = scoped.length + 1;
   return `FRM-${String(next).padStart(4, "0")}`;
 }
 
-export function farmerSummary(farmer: Farmer, from?: string, to?: string): FarmerSummary {
-  const trips = store.trips.filter((trip) => trip.status !== "cancelled");
+function inBusiness<T extends { businessId?: string }>(item: T, businessId?: string | null) {
+  return belongsToBusiness(item, businessId);
+}
+
+export function farmerSummary(
+  farmer: Farmer,
+  from?: string,
+  to?: string,
+  businessId?: string | null
+): FarmerSummary {
+  const trips = store.trips.filter(
+    (trip) => trip.status !== "cancelled" && inBusiness(trip, businessId ?? farmer.businessId)
+  );
   const entries = trips
     .flatMap((trip) => trip.entries.map((entry) => ({ trip, entry })))
     .filter(({ trip, entry }) => {
@@ -193,6 +283,7 @@ export function farmerSummary(farmer: Farmer, from?: string, to?: string): Farme
   const freightPaise = entries.reduce((sum, item) => sum + item.entry.freightAmountPaise, 0);
   const paidPaise = store.payments
     .filter((payment) => {
+      if (!inBusiness(payment, businessId ?? farmer.businessId)) return false;
       if (payment.farmerId !== farmer.id) return false;
       if (from && to) return inRange(payment.paymentDate, from, to);
       return true;
@@ -221,20 +312,27 @@ export function tripTotals(entries: CrateEntry[]): {
   };
 }
 
-export function dashboardSummary(preset = "today", from?: string, to?: string): DashboardSummary {
+export function dashboardSummary(
+  preset = "today",
+  from?: string,
+  to?: string,
+  businessId?: string | null
+): DashboardSummary {
   const range = resolveDateRange(preset, from, to);
-  const trips = store.trips.filter((trip) => inRange(trip.tripDate, range.from, range.to));
+  const trips = store.trips.filter(
+    (trip) => inBusiness(trip, businessId) && inRange(trip.tripDate, range.from, range.to)
+  );
   const crates = trips.reduce((sum, trip) => sum + trip.totalCrates, 0);
   const freightPaise = trips.reduce((sum, trip) => sum + trip.totalFreightPaise, 0);
   const receivedPaise = store.payments
-    .filter((payment) => inRange(payment.paymentDate, range.from, range.to))
+    .filter((payment) => inBusiness(payment, businessId) && inRange(payment.paymentDate, range.from, range.to))
     .reduce((sum, payment) => sum + payment.amountPaise, 0);
   const expensesPaise = store.expenses
-    .filter((expense) => inRange(expense.expenseDate, range.from, range.to))
+    .filter((expense) => inBusiness(expense, businessId) && inRange(expense.expenseDate, range.from, range.to))
     .reduce((sum, expense) => sum + expense.amountPaise, 0);
   const outstandingPaise = store.farmers
-    .filter((farmer) => farmer.active)
-    .map((farmer) => farmerSummary(farmer))
+    .filter((farmer) => farmer.active && inBusiness(farmer, businessId))
+    .map((farmer) => farmerSummary(farmer, undefined, undefined, businessId))
     .reduce((sum, farmer) => sum + Math.max(farmer.outstandingPaise, 0), 0);
 
   return {
@@ -253,10 +351,18 @@ export function dashboardSummary(preset = "today", from?: string, to?: string): 
   };
 }
 
-export function dailySheet(preset = "today", from?: string, to?: string): DailySheet {
+export function dailySheet(
+  preset = "today",
+  from?: string,
+  to?: string,
+  businessId?: string | null
+): DailySheet {
   const range = resolveDateRange(preset, from, to);
   const trips = store.trips.filter(
-    (trip) => trip.status !== "cancelled" && inRange(trip.tripDate, range.from, range.to)
+    (trip) =>
+      trip.status !== "cancelled" &&
+      inBusiness(trip, businessId) &&
+      inRange(trip.tripDate, range.from, range.to)
   );
   const aggregated = new Map<string, { crates: number; freightPaise: number }>();
   for (const entry of trips.flatMap((trip) => trip.entries)) {
@@ -268,7 +374,7 @@ export function dailySheet(preset = "today", from?: string, to?: string): DailyS
 
   const farmers: DayFarmerRow[] = [...aggregated.entries()]
     .map(([farmerId, totals]) => {
-      const farmer = store.farmers.find((item) => item.id === farmerId);
+      const farmer = store.farmers.find((item) => item.id === farmerId && inBusiness(item, businessId));
       return {
         farmerId,
         farmerCode: farmer?.farmerCode ?? "",
@@ -276,7 +382,7 @@ export function dailySheet(preset = "today", from?: string, to?: string): DailyS
         village: farmer?.village ?? "",
         crates: totals.crates,
         freightPaise: totals.freightPaise,
-        outstandingPaise: farmer ? farmerSummary(farmer).outstandingPaise : 0
+        outstandingPaise: farmer ? farmerSummary(farmer, undefined, undefined, businessId).outstandingPaise : 0
       };
     })
     .sort((a, b) => b.crates - a.crates || a.fullName.localeCompare(b.fullName));
@@ -292,25 +398,29 @@ export function dailySheet(preset = "today", from?: string, to?: string): DailyS
   };
 }
 
-export function farmerLedger(farmerId: string, from?: string, to?: string): LedgerLine[] {
-  const farmer = store.farmers.find((item) => item.id === farmerId);
+export function farmerLedger(
+  farmerId: string,
+  from?: string,
+  to?: string,
+  businessId?: string | null
+): LedgerLine[] {
+  const farmer = store.farmers.find((item) => item.id === farmerId && inBusiness(item, businessId));
   if (!farmer) return [];
 
   const lines: Array<Omit<LedgerLine, "runningBalancePaise">> = [];
 
-  for (const trip of store.trips) {
+  for (const trip of store.trips.filter((item) => inBusiness(item, businessId ?? farmer.businessId))) {
     for (const entry of trip.entries.filter((item) => item.farmerId === farmerId)) {
       if (from && to && !inRange(trip.tripDate, from, to)) continue;
-      const remaining = remainingOnCharge(entry.id);
+      const remaining = remainingOnCharge(entry.id, businessId ?? farmer.businessId);
       const paidLabel =
         remaining <= 0 ? "Paid" : remaining < entry.freightAmountPaise ? "Partially paid" : "Unpaid";
-      const typeLabel = entry.crateType ? CRATE_TYPE_LABELS[entry.crateType] : "";
+      const crateType = entry.crateType ? ` · ${entry.crateType}` : "";
       lines.push({
         id: entry.id,
         date: trip.tripDate,
         type: "freight",
-        description: `Trip ${trip.tripNumber}${typeLabel ? ` · ${typeLabel}` : ""} · ${entry.crateCount} crates · ${paidLabel}`,
-        crateType: entry.crateType,
+        description: `Trip ${trip.tripNumber}${crateType} · ${entry.crateCount} crates · ${paidLabel}`,
         crates: entry.crateCount,
         debitPaise: entry.freightAmountPaise,
         creditPaise: 0
@@ -318,7 +428,9 @@ export function farmerLedger(farmerId: string, from?: string, to?: string): Ledg
     }
   }
 
-  for (const payment of store.payments.filter((item) => item.farmerId === farmerId)) {
+  for (const payment of store.payments.filter(
+    (item) => item.farmerId === farmerId && inBusiness(item, businessId ?? farmer.businessId)
+  )) {
     if (from && to && !inRange(payment.paymentDate, from, to)) continue;
     lines.push({
       id: payment.id,
@@ -338,13 +450,17 @@ export function farmerLedger(farmerId: string, from?: string, to?: string): Ledg
   });
 }
 
-function remainingOnCharge(entryId: string): number {
-  const entry = store.trips.flatMap((trip) => trip.entries).find((item) => item.id === entryId);
+function remainingOnCharge(entryId: string, businessId?: string | null): number {
+  const entry = store.trips
+    .filter((trip) => inBusiness(trip, businessId))
+    .flatMap((trip) => trip.entries)
+    .find((item) => item.id === entryId);
   if (!entry) return 0;
   const paid = store.payments
-    .filter((payment) => payment.farmerId === entry.farmerId)
+    .filter((payment) => payment.farmerId === entry.farmerId && inBusiness(payment, businessId))
     .reduce((sum, payment) => sum + payment.amountPaise, 0);
   const charges = store.trips
+    .filter((trip) => inBusiness(trip, businessId))
     .flatMap((trip) => trip.entries)
     .filter((item) => item.farmerId === entry.farmerId)
     .sort((a, b) => a.id.localeCompare(b.id));

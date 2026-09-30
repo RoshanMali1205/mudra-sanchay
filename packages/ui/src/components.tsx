@@ -22,18 +22,37 @@ export function MetricCard({
   label,
   value,
   hint,
-  tone = "default"
+  tone = "default",
+  imageSrc,
+  imageAlt,
+  imagePosition
 }: {
   label: string;
   value: string;
   hint?: string;
   tone?: "default" | "income" | "expense" | "accent";
+  imageSrc?: string;
+  imageAlt?: string;
+  imagePosition?: string;
 }) {
+  const photo = Boolean(imageSrc);
   return (
-    <article className={`ms-card metric-card metric-${tone}`}>
-      <p className="metric-label">{label}</p>
-      <p className="metric-value">{value}</p>
-      {hint ? <p className="metric-hint">{hint}</p> : null}
+    <article
+      className={`ms-card metric-card metric-${tone}${photo ? " metric-card-photo" : ""}`.trim()}
+    >
+      {imageSrc ? (
+        <img
+          className="metric-photo"
+          src={imageSrc}
+          alt={imageAlt ?? ""}
+          style={imagePosition ? { objectPosition: imagePosition } : undefined}
+        />
+      ) : null}
+      <div className="metric-body">
+        <p className="metric-label">{label}</p>
+        <p className="metric-value">{value}</p>
+        {hint ? <p className="metric-hint">{hint}</p> : null}
+      </div>
     </article>
   );
 }

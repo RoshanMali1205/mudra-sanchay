@@ -169,10 +169,8 @@ create table if not exists public.mudra_crate_entries (
   business_id uuid not null references public.mudra_businesses (id),
   trip_id uuid not null references public.mudra_trips (id) on delete cascade,
   farmer_id uuid not null references public.mudra_farmers (id),
-  crate_type text check (
-    crate_type is null
-    or crate_type in ('export_quality', 'ek_number', 'lal', 'golti', 'badla')
-  ),
+  crate_type text not null default 'golti'
+    check (crate_type in ('golti', 'lal', 'badla', 'ek_number', 'export_quality')),
   crate_count integer not null default 0 check (crate_count >= 0 and crate_count <= 5000),
   rate_paise integer not null check (rate_paise >= 0),
   freight_amount_paise integer not null default 0 check (freight_amount_paise >= 0),

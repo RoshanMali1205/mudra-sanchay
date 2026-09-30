@@ -1,5 +1,5 @@
 import type {
-  CRATE_TYPES,
+  CRATE_TYPE_CODES,
   EXPENSE_CATEGORY_CODES,
   MEMBER_ROLES,
   PAYMENT_MODES,
@@ -10,12 +10,12 @@ import type {
 } from "./constants.js";
 
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
-export type CrateType = (typeof CRATE_TYPES)[number];
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 export type TripStatus = (typeof TRIP_STATUSES)[number];
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
 export type RateSource = (typeof RATE_SOURCES)[number];
 export type ExpenseCategoryCode = (typeof EXPENSE_CATEGORY_CODES)[number];
+export type CrateTypeCode = (typeof CRATE_TYPE_CODES)[number];
 export type ReceiptPaymentStatus = (typeof RECEIPT_PAYMENT_STATUSES)[number];
 
 export type ApiErrorBody = {
@@ -56,6 +56,7 @@ export type Business = {
 
 export type Farmer = {
   id: string;
+  businessId?: string;
   farmerCode: string;
   fullName: string;
   village: string;
@@ -78,6 +79,7 @@ export type FarmerSummary = Farmer & {
 
 export type Vehicle = {
   id: string;
+  businessId?: string;
   registrationNumber: string;
   displayName: string;
   active: boolean;
@@ -85,6 +87,7 @@ export type Vehicle = {
 
 export type Route = {
   id: string;
+  businessId?: string;
   originName: string;
   destinationName: string;
   defaultRatePaise: number;
@@ -96,7 +99,7 @@ export type CrateEntry = {
   tripId: string;
   farmerId: string;
   farmerName: string;
-  crateType?: CrateType;
+  crateType: CrateTypeCode;
   crateCount: number;
   ratePaise: number;
   freightAmountPaise: number;
@@ -106,6 +109,7 @@ export type CrateEntry = {
 
 export type Trip = {
   id: string;
+  businessId?: string;
   tripDate: string;
   tripNumber: number;
   vehicleId: string;
@@ -120,6 +124,7 @@ export type Trip = {
 
 export type Payment = {
   id: string;
+  businessId?: string;
   farmerId: string;
   farmerName?: string;
   paymentDate: string;
@@ -132,6 +137,7 @@ export type Payment = {
 
 export type Expense = {
   id: string;
+  businessId?: string;
   expenseDate: string;
   categoryCode: string;
   amountPaise: number;
@@ -154,6 +160,7 @@ export type ReceiptPaymentEvent = {
 
 export type MarketReceipt = {
   id: string;
+  businessId?: string;
   farmerId?: string;
   farmerName?: string;
   tripId?: string;
@@ -176,6 +183,7 @@ export type MarketReceipt = {
 
 export type AuditLog = {
   id: string;
+  businessId?: string;
   actorName: string;
   action: string;
   entityType: string;
@@ -225,7 +233,6 @@ export type LedgerLine = {
   date: string;
   type: "freight" | "payment" | "adjustment";
   description: string;
-  crateType?: CrateType;
   crates?: number;
   debitPaise: number;
   creditPaise: number;

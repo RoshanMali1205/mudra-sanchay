@@ -1,28 +1,80 @@
-import type { SessionUser } from "@mudra-sanchay/shared";
-import { APP_CODE, supabaseAdmin, isSupabaseEnabled } from "./supabase.js";
+import type { CrateTypeCode, SessionUser } from "@mudra-sanchay/shared";
+import { DEFAULT_CRATE_TYPE } from "@mudra-sanchay/shared";
+import { APP_CODE, createSupabaseAuthClient, supabaseAdmin, isSupabaseEnabled } from "./supabase.js";
 import { store, tripTotals, type StoredUser } from "./store.js";
 
 function assertOk<T extends { error: { message: string } | null }>(result: T, action: string): T {
-  if (result.error) throw new Error(`${action}: ${result.error.message}`);
+  if (result.error) {
+    const message = result.error.message;
+    if (/row-level security/i.test(message)) {
+      throw new Error(
+        `${action}: ${message}. Shared Supabase projects need SUPABASE_SERVICE_ROLE_KEY set to the service_role secret (not the anon key) on Netlify, then redeploy.`
+      );
+    }
+    throw new Error(`${action}: ${message}`);
+  }
   return result;
 }
 
-export async function hydrateFromSupabase() {
+function clearOperationalStore() {
+  store.businesses = [];
+  store.members = [];
+  store.vehicles = [];
+  store.routes = [];
+  store.farmers = [];
+  store.trips = [];
+  store.payments = [];
+  store.expenses = [];
+  store.receipts = [];
+  store.auditLogs = [];
+  store.ownerCreated = false;
+}
+
+/** Rows this login is allowed to save. Other businesses in memory are ignored. */
+export function businessWriteSet(businessId: string) {
+  const trips = store.trips.filter((item) => item.businessId === businessId);
+  return {
+    businesses: store.businesses.filter((item) => item.id === businessId),
+    members: store.members.filter((item) => item.businessId === businessId),
+    vehicles: store.vehicles.filter((item) => item.businessId === businessId),
+    routes: store.routes.filter((item) => item.businessId === businessId),
+    farmers: store.farmers.filter((item) => item.businessId === businessId),
+    trips,
+    payments: store.payments.filter((item) => item.businessId === businessId),
+    expenses: store.expenses.filter((item) => item.businessId === businessId),
+    receipts: store.receipts.filter((item) => item.businessId === businessId),
+    auditLogs: store.auditLogs.filter((item) => item.businessId === businessId)
+  };
+}
+
+/** Load only one business into the in-memory store so logins never share entries. */
+export async function hydrateFromSupabase(businessId?: string | null) {
   const db = supabaseAdmin();
   if (!db) return;
 
-  const [businesses, members, vehicles, routes, farmers, trips, entries, payments, expenses, receipts] =
+  if (!businessId) {
+    clearOperationalStore();
+    return;
+  }
+
+  const [businesses, members, vehicles, routes, farmers, trips, entries, payments, expenses, receipts, auditLogs] =
     await Promise.all([
-      db.from("mudra_businesses").select("*").is("deleted_at", null),
-      db.from("mudra_business_members").select("*"),
-      db.from("mudra_vehicles").select("*").is("deleted_at", null),
-      db.from("mudra_routes").select("*").is("deleted_at", null),
-      db.from("mudra_farmers").select("*").is("deleted_at", null),
-      db.from("mudra_trips").select("*").is("deleted_at", null),
-      db.from("mudra_crate_entries").select("*"),
-      db.from("mudra_payments").select("*"),
-      db.from("mudra_expenses").select("*"),
-      db.from("mudra_market_receipts").select("*")
+      db.from("mudra_businesses").select("*").eq("id", businessId).is("deleted_at", null),
+      db.from("mudra_business_members").select("*").eq("business_id", businessId),
+      db.from("mudra_vehicles").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_routes").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_farmers").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_trips").select("*").eq("business_id", businessId).is("deleted_at", null),
+      db.from("mudra_crate_entries").select("*").eq("business_id", businessId),
+      db.from("mudra_payments").select("*").eq("business_id", businessId),
+      db.from("mudra_expenses").select("*").eq("business_id", businessId),
+      db.from("mudra_market_receipts").select("*").eq("business_id", businessId),
+      db
+        .from("mudra_audit_logs")
+        .select("*")
+        .eq("business_id", businessId)
+        .order("created_at", { ascending: false })
+        .limit(200)
     ]);
 
   for (const [label, result] of [
@@ -35,7 +87,8 @@ export async function hydrateFromSupabase() {
     ["entries", entries],
     ["payments", payments],
     ["expenses", expenses],
-    ["receipts", receipts]
+    ["receipts", receipts],
+    ["audit", auditLogs]
   ] as const) {
     assertOk(result, `hydrate ${label}`);
   }
@@ -60,6 +113,7 @@ export async function hydrateFromSupabase() {
 
   store.vehicles = (vehicles.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     registrationNumber: row.registration_number,
     displayName: row.display_name,
     active: row.active
@@ -67,6 +121,7 @@ export async function hydrateFromSupabase() {
 
   store.routes = (routes.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     originName: row.origin_name,
     destinationName: row.destination_name,
     defaultRatePaise: row.default_rate_paise ?? 2500,
@@ -75,6 +130,7 @@ export async function hydrateFromSupabase() {
 
   store.farmers = (farmers.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     farmerCode: row.farmer_code,
     fullName: row.full_name,
     village: row.village,
@@ -91,12 +147,13 @@ export async function hydrateFromSupabase() {
       .filter((entry) => entry.trip_id === row.id)
       .map((entry) => {
         const farmer = store.farmers.find((item) => item.id === entry.farmer_id);
+        const crateType = (entry.crate_type ?? DEFAULT_CRATE_TYPE) as CrateTypeCode;
         return {
           id: entry.id,
           tripId: entry.trip_id,
           farmerId: entry.farmer_id,
           farmerName: farmer?.fullName ?? "",
-          crateType: entry.crate_type ?? undefined,
+          crateType,
           crateCount: entry.crate_count,
           ratePaise: entry.rate_paise,
           freightAmountPaise: entry.freight_amount_paise,
@@ -106,6 +163,7 @@ export async function hydrateFromSupabase() {
       });
     return {
       id: row.id,
+      businessId: row.business_id,
       tripDate: row.trip_date,
       tripNumber: row.trip_number,
       vehicleId: row.vehicle_id,
@@ -119,6 +177,7 @@ export async function hydrateFromSupabase() {
 
   store.payments = (payments.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     farmerId: row.farmer_id,
     farmerName: store.farmers.find((farmer) => farmer.id === row.farmer_id)?.fullName,
     paymentDate: row.payment_date,
@@ -129,14 +188,28 @@ export async function hydrateFromSupabase() {
 
   store.expenses = (expenses.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     expenseDate: row.expense_date,
     categoryCode: row.category_code,
     amountPaise: row.amount_paise,
     vendorName: row.vendor_name ?? undefined
   }));
 
+  store.auditLogs = (auditLogs.data ?? []).map((row) => ({
+    id: row.id,
+    businessId: row.business_id ?? businessId,
+    actorName: row.actor_name ?? "",
+    action: row.action,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    beforeData: (row.before_data as Record<string, unknown> | null) ?? undefined,
+    afterData: (row.after_data as Record<string, unknown> | null) ?? undefined,
+    createdAt: row.created_at
+  }));
+
   store.receipts = (receipts.data ?? []).map((row) => ({
     id: row.id,
+    businessId: row.business_id,
     farmerId: row.farmer_id ?? undefined,
     farmerName: store.farmers.find((farmer) => farmer.id === row.farmer_id)?.fullName,
     receiptNumber: row.receipt_number ?? undefined,
@@ -157,34 +230,82 @@ export async function hydrateFromSupabase() {
   store.ownerCreated = store.businesses.length > 0;
 }
 
-export async function flushToSupabase() {
-  const db = supabaseAdmin();
-  if (!db) return;
-  const businessId = store.businesses[0]?.id;
-  if (!businessId) return;
+export type StoreSlice =
+  | "businesses"
+  | "members"
+  | "vehicles"
+  | "routes"
+  | "farmers"
+  | "trips"
+  | "entries"
+  | "payments"
+  | "expenses"
+  | "receipts"
+  | "audit";
 
-  assertOk(
-    await db.from("mudra_businesses").upsert(
-      store.businesses.map((item) => ({
-        id: item.id,
-        name: item.name,
-        print_name: item.printName,
-        owner_name: item.ownerName,
-        phone: item.phone ?? null,
-        default_language: item.defaultLanguage,
-        timezone: item.timezone,
-        currency: item.currency,
-        default_rate_paise: item.defaultRatePaise
-      }))
+export type StoreSnapshot = Record<StoreSlice, string>;
+
+/** Capture store slices so mutations only flush what actually changed. */
+export function captureStoreSnapshot(): StoreSnapshot {
+  return {
+    businesses: JSON.stringify(store.businesses),
+    members: JSON.stringify(store.members),
+    vehicles: JSON.stringify(store.vehicles),
+    routes: JSON.stringify(store.routes),
+    farmers: JSON.stringify(store.farmers),
+    trips: JSON.stringify(
+      store.trips.map(({ entries: _entries, totalCrates: _c, totalFreightPaise: _f, farmerCount: _n, ...trip }) => trip)
     ),
-    "flush businesses"
-  );
+    entries: JSON.stringify(store.trips.map((trip) => ({ tripId: trip.id, entries: trip.entries }))),
+    payments: JSON.stringify(store.payments),
+    expenses: JSON.stringify(store.expenses),
+    receipts: JSON.stringify(store.receipts),
+    audit: JSON.stringify(store.auditLogs)
+  };
+}
 
-  if (store.members.length) {
+export function changedStoreSlices(before: StoreSnapshot, after: StoreSnapshot = captureStoreSnapshot()): Set<StoreSlice> {
+  const dirty = new Set<StoreSlice>();
+  for (const key of Object.keys(before) as StoreSlice[]) {
+    if (before[key] !== after[key]) dirty.add(key);
+  }
+  return dirty;
+}
+
+export async function flushToSupabase(businessId?: string | null, dirty?: Set<StoreSlice>) {
+  const db = supabaseAdmin();
+  if (!db || !businessId) return;
+  // Empty dirty set = nothing changed this request; skip all writes.
+  if (dirty && dirty.size === 0) return;
+
+  const scoped = businessWriteSet(businessId);
+  const writeAll = !dirty;
+  const should = (slice: StoreSlice) => writeAll || Boolean(dirty?.has(slice));
+
+  if (should("businesses") && scoped.businesses.length) {
+    assertOk(
+      await db.from("mudra_businesses").upsert(
+        scoped.businesses.map((item) => ({
+          id: item.id,
+          name: item.name,
+          print_name: item.printName,
+          owner_name: item.ownerName,
+          phone: item.phone ?? null,
+          default_language: item.defaultLanguage,
+          timezone: item.timezone,
+          currency: item.currency,
+          default_rate_paise: item.defaultRatePaise
+        }))
+      ),
+      "flush businesses"
+    );
+  }
+
+  if (should("members") && scoped.members.length) {
     assertOk(
       await db.from("mudra_business_members").upsert(
-        store.members.map((item) => ({
-          business_id: item.businessId,
+        scoped.members.map((item) => ({
+          business_id: businessId,
           user_id: item.userId,
           role: item.role,
           status: "active"
@@ -195,10 +316,10 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.vehicles.length) {
+  if (should("vehicles") && scoped.vehicles.length) {
     assertOk(
       await db.from("mudra_vehicles").upsert(
-        store.vehicles.map((item) => ({
+        scoped.vehicles.map((item) => ({
           id: item.id,
           business_id: businessId,
           registration_number: item.registrationNumber,
@@ -210,10 +331,10 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.routes.length) {
+  if (should("routes") && scoped.routes.length) {
     assertOk(
       await db.from("mudra_routes").upsert(
-        store.routes.map((item) => ({
+        scoped.routes.map((item) => ({
           id: item.id,
           business_id: businessId,
           origin_name: item.originName,
@@ -226,10 +347,10 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.farmers.length) {
+  if (should("farmers") && scoped.farmers.length) {
     assertOk(
       await db.from("mudra_farmers").upsert(
-        store.farmers.map((item) => ({
+        scoped.farmers.map((item) => ({
           id: item.id,
           business_id: businessId,
           farmer_code: item.farmerCode,
@@ -245,10 +366,10 @@ export async function flushToSupabase() {
     );
   }
 
-  if (store.trips.length) {
+  if (should("trips") && scoped.trips.length) {
     assertOk(
       await db.from("mudra_trips").upsert(
-        store.trips.map((item) => ({
+        scoped.trips.map((item) => ({
           id: item.id,
           business_id: businessId,
           trip_date: item.tripDate,
@@ -263,88 +384,138 @@ export async function flushToSupabase() {
     );
   }
 
-  assertOk(await db.from("mudra_crate_entries").delete().eq("business_id", businessId), "clear crate entries");
-  if (store.trips.some((trip) => trip.entries.length)) {
-    assertOk(
-      await db.from("mudra_crate_entries").insert(
-        store.trips.flatMap((trip) =>
-          trip.entries.map((entry) => ({
-            id: entry.id,
+  if (should("entries")) {
+    assertOk(await db.from("mudra_crate_entries").delete().eq("business_id", businessId), "clear crate entries");
+    if (scoped.trips.some((trip) => trip.entries.length)) {
+      assertOk(
+        await db.from("mudra_crate_entries").insert(
+          scoped.trips.flatMap((trip) =>
+            trip.entries.map((entry) => ({
+              id: entry.id,
+              business_id: businessId,
+              trip_id: trip.id,
+              farmer_id: entry.farmerId,
+              crate_type: entry.crateType ?? DEFAULT_CRATE_TYPE,
+              crate_count: entry.crateCount,
+              rate_paise: entry.ratePaise,
+              freight_amount_paise: entry.freightAmountPaise,
+              rate_source: entry.rateSource
+            }))
+          )
+        ),
+        "flush crate entries"
+      );
+    }
+  }
+
+  if (should("payments")) {
+    assertOk(await db.from("mudra_payments").delete().eq("business_id", businessId), "clear payments");
+    if (scoped.payments.length) {
+      assertOk(
+        await db.from("mudra_payments").insert(
+          scoped.payments.map((item) => ({
+            id: item.id,
             business_id: businessId,
-            trip_id: trip.id,
-            farmer_id: entry.farmerId,
-            crate_type: entry.crateType ?? null,
-            crate_count: entry.crateCount,
-            rate_paise: entry.ratePaise,
-            freight_amount_paise: entry.freightAmountPaise,
-            rate_source: entry.rateSource
+            farmer_id: item.farmerId,
+            payment_date: item.paymentDate,
+            amount_paise: item.amountPaise,
+            mode: item.mode,
+            notes: item.notes ?? null
           }))
-        )
-      ),
-      "flush crate entries"
-    );
+        ),
+        "flush payments"
+      );
+    }
   }
 
-  assertOk(await db.from("mudra_payments").delete().eq("business_id", businessId), "clear payments");
-  if (store.payments.length) {
-    assertOk(
-      await db.from("mudra_payments").insert(
-        store.payments.map((item) => ({
-          id: item.id,
-          business_id: businessId,
-          farmer_id: item.farmerId,
-          payment_date: item.paymentDate,
-          amount_paise: item.amountPaise,
-          mode: item.mode,
-          notes: item.notes ?? null
-        }))
-      ),
-      "flush payments"
-    );
+  if (should("expenses")) {
+    assertOk(await db.from("mudra_expenses").delete().eq("business_id", businessId), "clear expenses");
+    if (scoped.expenses.length) {
+      assertOk(
+        await db.from("mudra_expenses").insert(
+          scoped.expenses.map((item) => ({
+            id: item.id,
+            business_id: businessId,
+            expense_date: item.expenseDate,
+            category_code: item.categoryCode,
+            amount_paise: item.amountPaise,
+            vendor_name: item.vendorName ?? null
+          }))
+        ),
+        "flush expenses"
+      );
+    }
   }
 
-  assertOk(await db.from("mudra_expenses").delete().eq("business_id", businessId), "clear expenses");
-  if (store.expenses.length) {
-    assertOk(
-      await db.from("mudra_expenses").insert(
-        store.expenses.map((item) => ({
-          id: item.id,
-          business_id: businessId,
-          expense_date: item.expenseDate,
-          category_code: item.categoryCode,
-          amount_paise: item.amountPaise,
-          vendor_name: item.vendorName ?? null
-        }))
-      ),
-      "flush expenses"
-    );
+  if (should("receipts")) {
+    assertOk(await db.from("mudra_market_receipts").delete().eq("business_id", businessId), "clear receipts");
+    if (scoped.receipts.length) {
+      assertOk(
+        await db.from("mudra_market_receipts").insert(
+          scoped.receipts.map((item) => ({
+            id: item.id,
+            business_id: businessId,
+            farmer_id: item.farmerId ?? null,
+            receipt_number: item.receiptNumber ?? null,
+            receipt_date: item.receiptDate ?? null,
+            gross_amount_paise: item.grossAmountPaise,
+            net_amount_paise: item.netAmountPaise,
+            paid_amount_paise: item.paidAmountPaise,
+            payment_status: item.paymentStatus,
+            original_storage_path: item.fileName
+          }))
+        ),
+        "flush receipts"
+      );
+    }
   }
 
-  assertOk(await db.from("mudra_market_receipts").delete().eq("business_id", businessId), "clear receipts");
-  if (store.receipts.length) {
+  if (should("audit") && scoped.auditLogs.length) {
     assertOk(
-      await db.from("mudra_market_receipts").insert(
-        store.receipts.map((item) => ({
+      await db.from("mudra_audit_logs").upsert(
+        scoped.auditLogs.map((item) => ({
           id: item.id,
           business_id: businessId,
-          farmer_id: item.farmerId ?? null,
-          receipt_number: item.receiptNumber ?? null,
-          receipt_date: item.receiptDate ?? null,
-          gross_amount_paise: item.grossAmountPaise,
-          net_amount_paise: item.netAmountPaise,
-          paid_amount_paise: item.paidAmountPaise,
-          payment_status: item.paymentStatus,
-          original_storage_path: item.fileName
+          actor_name: item.actorName,
+          action: item.action,
+          entity_type: item.entityType,
+          entity_id: item.entityId,
+          before_data: item.beforeData ?? null,
+          after_data: item.afterData ?? null,
+          created_at: item.createdAt
         }))
       ),
-      "flush receipts"
+      "flush audit"
     );
   }
 }
 
-export async function ensureBusinessMembership(userId: string) {
+export async function clearBusinessOperationalData(businessId: string) {
   const db = supabaseAdmin();
-  const businessId = store.businesses[0]?.id;
+
+  // Keep business profile, vehicles, routes and memberships — wipe day-to-day records.
+  store.farmers = store.farmers.filter((item) => item.businessId && item.businessId !== businessId);
+  store.trips = store.trips.filter((item) => item.businessId && item.businessId !== businessId);
+  store.payments = store.payments.filter((item) => item.businessId && item.businessId !== businessId);
+  store.expenses = store.expenses.filter((item) => item.businessId && item.businessId !== businessId);
+  store.receipts = store.receipts.filter((item) => item.businessId && item.businessId !== businessId);
+  store.auditLogs = [];
+
+  if (!db) return;
+
+  // Child rows first where FKs require it.
+  assertOk(await db.from("mudra_receipt_payment_events").delete().eq("business_id", businessId), "clear receipt events");
+  assertOk(await db.from("mudra_market_receipts").delete().eq("business_id", businessId), "clear receipts");
+  assertOk(await db.from("mudra_crate_entries").delete().eq("business_id", businessId), "clear crate entries");
+  assertOk(await db.from("mudra_payments").delete().eq("business_id", businessId), "clear payments");
+  assertOk(await db.from("mudra_expenses").delete().eq("business_id", businessId), "clear expenses");
+  assertOk(await db.from("mudra_trips").delete().eq("business_id", businessId), "clear trips");
+  assertOk(await db.from("mudra_farmers").delete().eq("business_id", businessId), "clear farmers");
+  assertOk(await db.from("mudra_audit_logs").delete().eq("business_id", businessId), "clear audit");
+}
+
+export async function ensureBusinessMembership(userId: string, businessId: string) {
+  const db = supabaseAdmin();
   if (!db || !businessId) return;
   assertOk(
     await db.from("mudra_business_members").upsert(
@@ -379,12 +550,16 @@ export async function sessionFromToken(token: string | undefined): Promise<Sessi
   if (!membership) return null;
 
   const { data: profile } = await db.from("mudra_profiles").select("*").eq("id", data.user.id).maybeSingle();
-  const { data: bizMember } = await db
+  // Keep the membership this user joined first so a second business row
+  // cannot hide the farmers and trips they already saved.
+  const { data: bizMembers } = await db
     .from("mudra_business_members")
-    .select("business_id, role")
+    .select("business_id, role, created_at")
     .eq("user_id", data.user.id)
     .eq("status", "active")
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const bizMember = bizMembers?.[0] ?? null;
 
   const stored: StoredUser = {
     id: data.user.id,
@@ -401,14 +576,16 @@ export async function sessionFromToken(token: string | undefined): Promise<Sessi
     fullName: stored.fullName,
     preferredLanguage: stored.preferredLanguage,
     role: (bizMember?.role ?? membership.role ?? "admin") as SessionUser["role"],
-    businessId: bizMember?.business_id ?? store.businesses[0]?.id ?? null,
+    businessId: bizMember?.business_id ?? null,
     onboarded: Boolean(bizMember)
   };
 }
 
 export async function ensureMudraAccess(userId: string, fullName?: string) {
   const db = supabaseAdmin();
-  if (!db) return;
+  if (!db) {
+    throw new Error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the API.");
+  }
   assertOk(
     await db.from("app_memberships").upsert(
       { user_id: userId, app_code: APP_CODE, role: "admin" },
@@ -429,7 +606,8 @@ export async function ensureMudraAccess(userId: string, fullName?: string) {
 
 export async function registerWithSupabase(input: { email: string; password: string; fullName: string }) {
   const db = supabaseAdmin();
-  if (!db) throw new Error("Supabase is not configured");
+  const auth = createSupabaseAuthClient();
+  if (!db || !auth) throw new Error("Supabase is not configured");
   const { data, error } = await db.auth.admin.createUser({
     email: input.email,
     password: input.password,
@@ -446,7 +624,8 @@ export async function registerWithSupabase(input: { email: string; password: str
   if (error && !alreadyExists) throw new Error(error.message);
   if (!alreadyExists && !data.user) throw new Error("Could not create the account.");
 
-  const { data: session, error: signInError } = await db.auth.signInWithPassword({
+  // Sign in on a throwaway client so the admin singleton keeps the service role (RLS bypass).
+  const { data: session, error: signInError } = await auth.auth.signInWithPassword({
     email: input.email,
     password: input.password
   });
@@ -472,13 +651,13 @@ export async function updateProfileLanguage(userId: string, preferredLanguage: "
 }
 
 export async function loginWithSupabase(input: { email: string; password: string }) {
-  const db = supabaseAdmin();
-  if (!db) throw new Error("Supabase is not configured");
-  const { data, error } = await db.auth.signInWithPassword(input);
+  const auth = createSupabaseAuthClient();
+  if (!auth) throw new Error("Supabase is not configured");
+  // Sign in on a throwaway client so the admin singleton keeps the service role (RLS bypass).
+  const { data, error } = await auth.auth.signInWithPassword(input);
   if (error || !data.session || !data.user) throw new Error("Email or password is incorrect.");
   const fullName = (data.user.user_metadata.full_name as string | undefined) ?? data.user.email ?? "User";
   await ensureMudraAccess(data.user.id, fullName);
-  await ensureBusinessMembership(data.user.id);
   const session = await sessionFromToken(data.session.access_token);
   if (!session) throw new Error("Could not open this Mudra Sanchay account. Try again.");
   return { token: data.session.access_token, user: session };

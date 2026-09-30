@@ -1,5 +1,5 @@
 import { FormEvent, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -20,6 +20,7 @@ import { downloadPdf } from "../lib/pdf";
 export function ExpensesPage() {
   const { t } = useTranslation();
   const location = useLocation();
+  const navigate = useNavigate();
   const showForm = location.pathname.endsWith("/new") || location.pathname === "/expenses/new";
   const queryClient = useQueryClient();
   const [preset, setPreset] = useState("month");
@@ -59,7 +60,7 @@ export function ExpensesPage() {
       setState("saved");
       await queryClient.invalidateQueries({ queryKey: ["expenses"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      event.currentTarget.reset();
+      navigate("/expenses");
     } catch {
       setState("error");
     }
@@ -67,8 +68,19 @@ export function ExpensesPage() {
 
   return (
     <section>
-      <header className="page-header">
+      <header className="page-header page-header-compact row-between">
         <h1>{showForm ? t("expense.new") : t("expense.list")}</h1>
+        {showForm ? (
+          <Link className="ms-btn ms-btn-ghost" to="/expenses">
+            {t("action.cancel")}
+          </Link>
+        ) : (
+          <Link className="ms-btn ms-btn-primary" to="/expenses/new">
+            {t("expense.new")}
+          </Link>
+        )}
+      </header>
+      {!showForm ? (
         <DateRangePicker
           preset={preset}
           onPreset={(value) => {
@@ -91,9 +103,9 @@ export function ExpensesPage() {
             custom: t("range.custom")
           }}
         />
-      </header>
+      ) : null}
       {showForm ? (
-        <form className="ms-card list-card" onSubmit={(event) => void onSubmit(event)}>
+        <form className="ms-card form-card" onSubmit={(event) => void onSubmit(event)}>
           <div className="chip-row">
             {EXPENSE_CATEGORY_CODES.map((code) => (
               <label key={code} className="chip">
@@ -124,86 +136,120 @@ export function ExpensesPage() {
             <span className="ms-label">{t("expense.vendor")}</span>
             <input name="vendorName" />
           </label>
-          <label className="ms-field">
-            <span className="ms-label">{t("expense.bill")}</span>
-            <input name="bill" type="file" accept="image/*,application/pdf" />
-          </label>
           <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
-          <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
-            {t("action.save")}
-          </button>
+          <div className="form-actions">
+            <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
+              {t("action.save")}
+            </button>
+          </div>
         </form>
-      ) : null}
-      <div className="chip-row" style={{ margin: "12px 0" }}>
-        <button className={category === "" ? "chip active" : "chip"} onClick={() => setCategory("")}>
-          All
-        </button>
-        {EXPENSE_CATEGORY_CODES.map((code) => (
-          <button key={code} className={category === code ? "chip active" : "chip"} onClick={() => setCategory(code)}>
-            {t(`expense.category.${code}`)}
+      ) : (
+      <>
+      <div className="filters-panel" style={{ marginTop: 14 }}>
+        <div className="chip-row">
+          <button type="button" className={category === "" ? "chip active" : "chip"} onClick={() => setCategory("")}>
+            {t("action.all")}
           </button>
-        ))}
-      </div>
-      <p>
-        {t("reports.expenses")}: {formatInrFromPaise(total)}
-      </p>
-      <div className="chip-row" style={{ margin: "12px 0" }}>
-        <button
-          className="ms-btn ms-btn-primary"
-          disabled={exporting}
-          onClick={() => {
-            setExporting(true);
-            void downloadPdf(
-              expensePdfDocument(
-                expenses.map((item) => ({
-                  date: item.expenseDate,
-                  category: t(`expense.category.${item.categoryCode}`),
-                  amount: formatInrFromPaise(item.amountPaise),
-                  vendor: item.vendorName ?? ""
-                })),
-                formatInrFromPaise(total),
+          {EXPENSE_CATEGORY_CODES.map((code) => (
+            <button
+              key={code}
+              type="button"
+              className={category === code ? "chip active" : "chip"}
+              onClick={() => setCategory(code)}
+            >
+              {t(`expense.category.${code}`)}
+            </button>
+          ))}
+        </div>
+        <div className="toolbar-row">
+          <strong>
+            {t("reports.expenses")}: {formatInrFromPaise(total)}
+          </strong>
+          <button
+            className="ms-btn ms-btn-primary"
+            disabled={exporting}
+            onClick={() => {
+              setExporting(true);
+              void downloadPdf(
+                expensePdfDocument(
+                  expenses.map((item) => ({
+                    date: item.expenseDate,
+                    category: t(`expense.category.${item.categoryCode}`),
+                    amount: formatInrFromPaise(item.amountPaise),
+                    vendor: item.vendorName ?? ""
+                  })),
+                  formatInrFromPaise(total),
+                  {
+                    title: t("expense.list"),
+                    date: t("trip.date"),
+                    category: t("expense.categoryLabel"),
+                    amount: t("payment.amount"),
+                    vendor: t("expense.vendor"),
+                    expenses: t("reports.expenses"),
+                    from: range.from,
+                    to: range.to
+                  }
+                )
+              ).finally(() => setExporting(false));
+            }}
+          >
+            {exporting ? t("status.saving") : t("action.pdf")}
+          </button>
+          <button
+            className="ms-btn ms-btn-ghost"
+            onClick={() =>
+              downloadExcel("expenses", [
                 {
-                  title: t("expense.list"),
-                  date: t("trip.date"),
-                  category: t("expense.categoryLabel"),
-                  amount: t("payment.amount"),
-                  vendor: t("expense.vendor"),
-                  expenses: t("reports.expenses"),
-                  from: range.from,
-                  to: range.to
+                  name: "Summary",
+                  rows: [
+                    ["Category totals"],
+                    ...EXPENSE_CATEGORY_CODES.map((code) => [
+                      t(`expense.category.${code}`),
+                      expenses.filter((item) => item.categoryCode === code).reduce((sum, item) => sum + item.amountPaise, 0) /
+                        100
+                    ])
+                  ]
+                },
+                {
+                  name: "Details",
+                  rows: [
+                    ["Date", "Category", "Amount", "Vendor"],
+                    ...expenses.map((item) => [
+                      item.expenseDate,
+                      item.categoryCode,
+                      item.amountPaise / 100,
+                      item.vendorName ?? ""
+                    ])
+                  ]
                 }
-              )
-            ).finally(() => setExporting(false));
-          }}
-        >
-          {exporting ? t("status.saving") : t("action.pdf")}
-        </button>
-        <button
-          className="ms-btn ms-btn-ghost"
-          onClick={() =>
-            downloadExcel("expenses", [
-              { name: "Summary", rows: [["Category totals"], ...EXPENSE_CATEGORY_CODES.map((code) => [t(`expense.category.${code}`), expenses.filter((item) => item.categoryCode === code).reduce((sum, item) => sum + item.amountPaise, 0) / 100])] },
-              { name: "Details", rows: [["Date", "Category", "Amount", "Vendor"], ...expenses.map((item) => [item.expenseDate, item.categoryCode, item.amountPaise / 100, item.vendorName ?? ""])] }
-            ])
-          }
-        >
-          {t("action.excel")}
-        </button>
+              ])
+            }
+          >
+            {t("action.excel")}
+          </button>
+        </div>
       </div>
       {expenses.length === 0 ? (
-        <EmptyState title={t("expense.list")} body={t("expense.new")} />
+        <EmptyState title={t("expense.list")} body={t("expense.new")} imageSrc="/images/tile-expense.svg" />
       ) : (
-        expenses.map((expense) => (
-          <article key={expense.id} className="list-card ms-card" style={{ marginTop: 10 }}>
-            <div className="row-between">
-              <strong>{t(`expense.category.${expense.categoryCode}`)}</strong>
-              <span>{formatInrFromPaise(expense.amountPaise)}</span>
-            </div>
-            <p className="muted">
-              {expense.expenseDate} {expense.vendorName ? `· ${expense.vendorName}` : ""}
-            </p>
-          </article>
-        ))
+        <div className="stack-list" style={{ marginTop: 14 }}>
+          {expenses.map((expense) => (
+            <article key={expense.id} className="ms-card entity-card">
+              <img className="entity-card-media" src="/images/tile-expense.svg" alt="" />
+              <div className="entity-card-body">
+                <div className="row-between">
+                  <strong>{t(`expense.category.${expense.categoryCode}`)}</strong>
+                  <strong>{formatInrFromPaise(expense.amountPaise)}</strong>
+                </div>
+                <p className="muted">
+                  {expense.expenseDate} {expense.vendorName ? `· ${expense.vendorName}` : ""}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      </>
       )}
     </section>
   );

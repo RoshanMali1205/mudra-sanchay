@@ -25,7 +25,7 @@ export function FarmerStatementPage() {
     () => resolveDateRange(preset, from, to),
     [preset, from, to]
   );
-  const { data } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["farmer-statement", farmerId, range.from, range.to],
     enabled: Boolean(farmerId),
     queryFn: () =>
@@ -36,7 +36,10 @@ export function FarmerStatementPage() {
 
   const [busy, setBusy] = useState<"pdf" | "share" | null>(null);
 
-  if (!data) return <p>Loading…</p>;
+  if (isLoading) return <p className="muted">Loading…</p>;
+  if (isError || !data) {
+    return <p className="ms-error">{error instanceof Error ? error.message : t("status.error")}</p>;
+  }
   const { farmer, ledger } = data;
   const message = `Namaskar ${farmer.fullName}, ${range.from} to ${range.to} cha Radhe Krishna Transport statement sobat pathavla aahe. Baki rakkam: ${formatInrFromPaise(farmer.outstandingPaise)}.`;
   const pdfLabels = {
@@ -101,7 +104,7 @@ export function FarmerStatementPage() {
             custom: t("range.custom")
           }}
         />
-        <div className="chip-row">
+        <div className="toolbar-row">
           <button className="ms-btn ms-btn-primary" disabled={busy !== null} onClick={() => void exportPdf()}>
             {busy === "pdf" ? t("status.saving") : t("action.pdf")}
           </button>
@@ -116,44 +119,69 @@ export function FarmerStatementPage() {
           </button>
         </div>
       </header>
-      <article className="ms-card list-card print-sheet">
-        <h2>{PRINT_BRAND}</h2>
-        <p>
-          {farmer.fullName} · {farmer.farmerCode} · {farmer.village}
-        </p>
-        <p className="muted">
-          {range.from} → {range.to} · {i18n.language}
-        </p>
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>{t("trip.date")}</th>
-              <th>{t("nav.trips")}</th>
-              <th>{t("trip.crates")}</th>
-              <th>{t("payment.amount")}</th>
-              <th>{t("payment.balance")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ledger.map((line) => (
-              <tr key={line.id}>
-                <td>{line.date}</td>
-                <td>{line.description}</td>
-                <td>{line.crates ?? ""}</td>
-                <td>{formatInrFromPaise(line.debitPaise || line.creditPaise)}</td>
-                <td>{formatInrFromPaise(line.runningBalancePaise)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p>
-          <strong>
-            {t("farmer.outstandingBalance")}: {formatInrFromPaise(farmer.outstandingPaise)}
-          </strong>
-        </p>
-        <footer>
-          <p>{DEVELOPER_FOOTER}</p>
-        </footer>
+      <article className="ms-card print-sheet">
+        <header className="statement-letterhead">
+          <h2>{PRINT_BRAND}</h2>
+          <p>
+            {farmer.fullName} · {farmer.farmerCode} · {farmer.village}
+          </p>
+          <p className="report-period" style={{ marginTop: 12 }}>
+            {range.from} → {range.to} · {i18n.language}
+          </p>
+        </header>
+        <div className="statement-body">
+          <div className="statement-summary-grid">
+            <div className="report-summary-item photo">
+              <img src="/images/tile-payment.svg" alt="" />
+              <div>
+                <span>{t("farmer.outstandingBalance")}</span>
+                <strong className={farmer.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
+                  {formatInrFromPaise(farmer.outstandingPaise)}
+                </strong>
+              </div>
+            </div>
+            <div className="report-summary-item photo">
+              <img src="/images/tile-farmer.svg" alt="" />
+              <div>
+                <span>{t("farmer.mobile")}</span>
+                <strong>{farmer.mobile || "—"}</strong>
+              </div>
+            </div>
+          </div>
+          <div className="report-table-wrap">
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th>{t("trip.date")}</th>
+                  <th>{t("nav.trips")}</th>
+                  <th className="num">{t("trip.crates")}</th>
+                  <th className="num">{t("payment.amount")}</th>
+                  <th className="num">{t("payment.balance")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.map((line) => (
+                  <tr key={line.id}>
+                    <td data-label={t("trip.date")}>{line.date}</td>
+                    <td data-label={t("nav.trips")}>{line.description}</td>
+                    <td className="num" data-label={t("trip.crates")}>
+                      {line.crates ?? ""}
+                    </td>
+                    <td className="num" data-label={t("payment.amount")}>
+                      {formatInrFromPaise(line.debitPaise || line.creditPaise)}
+                    </td>
+                    <td className="num" data-label={t("payment.balance")}>
+                      {formatInrFromPaise(line.runningBalancePaise)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <footer className="report-footer" style={{ marginTop: 0, padding: "4px 0 0", border: 0, background: "transparent" }}>
+            <p className="muted">{DEVELOPER_FOOTER}</p>
+          </footer>
+        </div>
       </article>
     </section>
   );

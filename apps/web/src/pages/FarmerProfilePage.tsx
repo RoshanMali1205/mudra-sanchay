@@ -9,13 +9,16 @@ export function FarmerProfilePage() {
   const { t } = useTranslation();
   const { farmerId } = useParams();
   const queryClient = useQueryClient();
-  const { data } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["farmer", farmerId],
     enabled: Boolean(farmerId),
     queryFn: () => api<{ farmer: FarmerSummary; ledger: LedgerLine[] }>(`/farmers/${farmerId}`)
   });
 
-  if (!data) return <p>Loading…</p>;
+  if (isLoading) return <p className="muted">Loading…</p>;
+  if (isError || !data) {
+    return <p className="ms-error">{error instanceof Error ? error.message : t("status.error")}</p>;
+  }
   const { farmer, ledger } = data;
 
   async function toggleArchive() {
@@ -36,12 +39,35 @@ export function FarmerProfilePage() {
         </p>
       </header>
       <div className="metric-grid">
-        <MetricCard label={t("trip.crates")} value={String(farmer.totalCrates)} />
-        <MetricCard label={t("dashboard.todayIncome")} value={formatInrFromPaise(farmer.freightPaise)} tone="income" />
-        <MetricCard label={t("dashboard.received")} value={formatInrFromPaise(farmer.paidPaise)} />
-        <MetricCard label={t("farmer.outstandingBalance")} value={formatInrFromPaise(farmer.outstandingPaise)} tone="accent" />
+        <MetricCard
+          label={t("trip.crates")}
+          value={String(farmer.totalCrates)}
+          imageSrc="/images/tomato-crate-square.png"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("dashboard.todayIncome")}
+          value={formatInrFromPaise(farmer.freightPaise)}
+          tone="income"
+          imageSrc="/images/farm-fields.png"
+          imageAlt=""
+          imagePosition="center 35%"
+        />
+        <MetricCard
+          label={t("dashboard.received")}
+          value={formatInrFromPaise(farmer.paidPaise)}
+          imageSrc="/images/tile-payment.svg"
+          imageAlt=""
+        />
+        <MetricCard
+          label={t("farmer.outstandingBalance")}
+          value={formatInrFromPaise(farmer.outstandingPaise)}
+          tone="accent"
+          imageSrc="/images/tomato-crates.png"
+          imageAlt=""
+        />
       </div>
-      <div className="chip-row" style={{ margin: "16px 0" }}>
+      <div className="toolbar-row" style={{ marginTop: 16 }}>
         <Link className="ms-btn ms-btn-primary" to={`/payments/new?farmerId=${farmer.id}`}>
           {t("payment.new")}
         </Link>
@@ -52,15 +78,20 @@ export function FarmerProfilePage() {
           {farmer.active ? t("action.archive") : t("action.restore")}
         </button>
       </div>
-      {ledger.map((line) => (
-        <article key={line.id} className="list-card ms-card" style={{ marginBottom: 10 }}>
-          <div className="row-between">
-            <strong>{line.date}</strong>
-            <span>{formatInrFromPaise(line.runningBalancePaise)}</span>
-          </div>
-          <p className="muted">{line.description}</p>
-        </article>
-      ))}
+      <div className="section-block">
+        <h2>{t("farmer.statement")}</h2>
+        <div className="stack-list">
+          {ledger.map((line) => (
+            <article key={line.id} className="ms-card list-card">
+              <div className="row-between">
+                <strong>{line.date}</strong>
+                <span>{formatInrFromPaise(line.runningBalancePaise)}</span>
+              </div>
+              <p className="muted">{line.description}</p>
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

@@ -50,7 +50,7 @@ export function NewFarmerPage() {
       <header className="page-header">
         <h1>{t("farmer.new")}</h1>
       </header>
-      <form className="ms-card list-card" onSubmit={onSubmit}>
+      <form className="ms-card form-card" onSubmit={onSubmit}>
         <label className="ms-field">
           <span className="ms-label">{t("farmer.name")}</span>
           <input name="fullName" required minLength={2} />
@@ -69,9 +69,11 @@ export function NewFarmerPage() {
         </label>
         {error ? <p className="ms-error">{error}</p> : null}
         <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />
-        <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
-          {t("action.save")}
-        </button>
+        <div className="form-actions">
+          <button className="ms-btn ms-btn-primary" disabled={state === "saving"}>
+            {t("action.save")}
+          </button>
+        </div>
       </form>
       {pendingBody ? (
         <ConfirmDialog

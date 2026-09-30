@@ -20,13 +20,13 @@ export function TripsPage() {
 
   return (
     <section>
-      <header className="page-header row-between">
+      <header className="page-header page-header-compact row-between">
         <h1>{t("nav.trips")}</h1>
         <Link className="ms-btn ms-btn-primary" to="/trips/new">
           {t("trip.new")}
         </Link>
       </header>
-      <label className="ms-field">
+      <label className="ms-field compact-filter">
         <span className="ms-label">{t("trip.date")}</span>
         <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
       </label>
@@ -38,22 +38,28 @@ export function TripsPage() {
           imageAlt="Tomato crate"
         />
       ) : (
-        data.map((trip) => (
-          <article key={trip.id} className="list-card ms-card" style={{ marginBottom: 12 }}>
-            <Link to={`/trips/${trip.id}`}>
-              <div className="row-between">
-                <strong>
-                  {trip.tripDate} · {t("trip.number")} {trip.tripNumber}
-                </strong>
-                <StatusChip label={t(`trip.${trip.status}`)} tone={trip.status === "completed" ? "success" : "warning"} />
+        <div className="stack-list">
+          {data.map((trip) => (
+            <Link key={trip.id} to={`/trips/${trip.id}`} className="ms-card entity-card">
+              <img className="entity-card-media" src="/images/tile-trip.svg" alt="" />
+              <div className="entity-card-body">
+                <div className="row-between">
+                  <strong>
+                    {trip.tripDate} · {t("trip.number")} {trip.tripNumber}
+                  </strong>
+                  <StatusChip
+                    label={t(`trip.${trip.status}`)}
+                    tone={trip.status === "completed" ? "success" : "warning"}
+                  />
+                </div>
+                <p className="muted">
+                  {tripFarmerCount(trip)} {t("trip.farmersCount")} · {trip.totalCrates} {t("trip.crates")} ·{" "}
+                  {formatInrFromPaise(trip.totalFreightPaise)}
+                </p>
               </div>
-              <p className="muted">
-                {tripFarmerCount(trip)} {t("trip.farmersCount")} · {trip.totalCrates} {t("trip.crates")} ·{" "}
-                {formatInrFromPaise(trip.totalFreightPaise)}
-              </p>
             </Link>
-          </article>
-        ))
+          ))}
+        </div>
       )}
     </section>
   );
