@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CRATE_TYPE_LABELS,
   inRange,
   resolveDateRange,
   type AuditLog,
@@ -303,11 +304,13 @@ export function farmerLedger(farmerId: string, from?: string, to?: string): Ledg
       const remaining = remainingOnCharge(entry.id);
       const paidLabel =
         remaining <= 0 ? "Paid" : remaining < entry.freightAmountPaise ? "Partially paid" : "Unpaid";
+      const typeLabel = entry.crateType ? CRATE_TYPE_LABELS[entry.crateType] : "";
       lines.push({
         id: entry.id,
         date: trip.tripDate,
         type: "freight",
-        description: `Trip ${trip.tripNumber} · ${entry.crateCount} crates · ${paidLabel}`,
+        description: `Trip ${trip.tripNumber}${typeLabel ? ` · ${typeLabel}` : ""} · ${entry.crateCount} crates · ${paidLabel}`,
+        crateType: entry.crateType,
         crates: entry.crateCount,
         debitPaise: entry.freightAmountPaise,
         creditPaise: 0

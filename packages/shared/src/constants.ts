@@ -12,6 +12,22 @@ export const API_PREFIX = "/api/v1";
 export const MAX_CRATE_COUNT = 5000;
 export const MAX_FUTURE_DAYS = 1;
 
+export const CRATE_TYPES = [
+  "export_quality",
+  "ek_number",
+  "lal",
+  "golti",
+  "badla"
+] as const;
+
+export const CRATE_TYPE_LABELS: Record<(typeof CRATE_TYPES)[number], string> = {
+  export_quality: "Export Quality",
+  ek_number: "Ek Number",
+  lal: "Lal",
+  golti: "Golti",
+  badla: "Badla"
+};
+
 export const PAYMENT_MODES = [
   "cash",
   "upi",

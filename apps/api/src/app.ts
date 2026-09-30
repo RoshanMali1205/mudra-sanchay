@@ -468,8 +468,8 @@ app.post("/trips/:id/entries", async (c) => {
   }
   const farmer = store.farmers.find((item) => item.id === parsed.data.farmerId);
   if (!farmer) return fail(c, 422, "FARMER_MISSING", "Choose a farmer from this business.");
-  if (trip.entries.some((entry) => entry.farmerId === farmer.id)) {
-    return fail(c, 409, "DUPLICATE_FARMER", "This farmer is already on the trip.");
+  if (trip.entries.some((entry) => entry.farmerId === farmer.id && entry.crateType === parsed.data.crateType)) {
+    return fail(c, 409, "DUPLICATE_FARMER", "This farmer already has this crate type on the trip.");
   }
   const business = store.businesses[0];
   const route = store.routes.find((item) => item.id === trip.routeId);
@@ -484,6 +484,7 @@ app.post("/trips/:id/entries", async (c) => {
     tripId: trip.id,
     farmerId: farmer.id,
     farmerName: farmer.fullName,
+    crateType: parsed.data.crateType,
     crateCount: parsed.data.crateCount,
     ratePaise: resolved.ratePaise,
     freightAmountPaise,
@@ -515,6 +516,15 @@ app.patch("/trips/:id/entries/:entryId", async (c) => {
   const parsed = crateEntryPatchSchema.safeParse(await c.req.json());
   if (!parsed.success) return fail(c, 400, "VALIDATION", "Check crate count and rate.");
   const before = { ...entry };
+  if (parsed.data.crateType !== undefined) {
+    const duplicate = trip.entries.some(
+      (item) => item.id !== entry.id && item.farmerId === entry.farmerId && item.crateType === parsed.data.crateType
+    );
+    if (duplicate) {
+      return fail(c, 409, "DUPLICATE_FARMER", "This farmer already has this crate type on the trip.");
+    }
+    entry.crateType = parsed.data.crateType;
+  }
   if (parsed.data.crateCount !== undefined) entry.crateCount = parsed.data.crateCount;
   if (parsed.data.ratePaise !== undefined) {
     entry.ratePaise = parsed.data.ratePaise;
@@ -553,9 +563,16 @@ app.post("/trips/:id/copy-farmers", async (c) => {
   if (!source) return fail(c, 404, "NOT_FOUND", "Source trip was not found.");
   const business = store.businesses[0];
   const route = store.routes.find((item) => item.id === trip.routeId);
-  for (const farmerId of parsed.data.farmerIds) {
-    if (trip.entries.some((entry) => entry.farmerId === farmerId)) continue;
-    const farmer = store.farmers.find((item) => item.id === farmerId && item.active);
+  for (const sourceEntry of source.entries) {
+    if (!parsed.data.farmerIds.includes(sourceEntry.farmerId)) continue;
+    if (
+      trip.entries.some(
+        (entry) => entry.farmerId === sourceEntry.farmerId && entry.crateType === sourceEntry.crateType
+      )
+    ) {
+      continue;
+    }
+    const farmer = store.farmers.find((item) => item.id === sourceEntry.farmerId && item.active);
     if (!farmer) continue;
     const resolved = resolveFreightRate({
       routeRatePaise: route?.defaultRatePaise,
@@ -566,6 +583,7 @@ app.post("/trips/:id/copy-farmers", async (c) => {
       tripId: trip.id,
       farmerId: farmer.id,
       farmerName: farmer.fullName,
+      crateType: sourceEntry.crateType,
       crateCount: 0,
       ratePaise: resolved.ratePaise,
       freightAmountPaise: 0,

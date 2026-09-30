@@ -1,4 +1,5 @@
 import type {
+  CRATE_TYPES,
   EXPENSE_CATEGORY_CODES,
   MEMBER_ROLES,
   PAYMENT_MODES,
@@ -9,6 +10,7 @@ import type {
 } from "./constants.js";
 
 export type Language = (typeof SUPPORTED_LANGUAGES)[number];
+export type CrateType = (typeof CRATE_TYPES)[number];
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 export type TripStatus = (typeof TRIP_STATUSES)[number];
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
@@ -94,6 +96,7 @@ export type CrateEntry = {
   tripId: string;
   farmerId: string;
   farmerName: string;
+  crateType?: CrateType;
   crateCount: number;
   ratePaise: number;
   freightAmountPaise: number;
@@ -222,6 +225,7 @@ export type LedgerLine = {
   date: string;
   type: "freight" | "payment" | "adjustment";
   description: string;
+  crateType?: CrateType;
   crates?: number;
   debitPaise: number;
   creditPaise: number;

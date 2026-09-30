@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
+  CRATE_TYPES,
   calculateFreightPaise,
   formatInrFromPaise,
   rupeesToPaise,
@@ -82,6 +83,7 @@ export function NewTripPage() {
         method: "POST",
         body: JSON.stringify({
           farmerId: form.get("farmerId"),
+          crateType: form.get("crateType"),
           crateCount: Number(form.get("crateCount")),
           ratePaise: rupeesToPaise(Number(form.get("rateRupees") || 25))
         })
@@ -206,6 +208,7 @@ export function NewTripPage() {
               {t("trip.totals")}: {trip.farmerCount ?? new Set(trip.entries.map((entry) => entry.farmerId)).size}{" "}
               {t("trip.farmersCount")} · {trip.totalCrates} {t("trip.crates")} · {formatInrFromPaise(trip.totalFreightPaise)}
             </p>
+            <CrateTypeTotals entries={trip.entries} />
             {trip.status === "draft" && previousTrip ? (
               <button className="ms-btn ms-btn-ghost" onClick={() => void copyFarmers()}>
                 {t("trip.copyFarmers")}
@@ -230,6 +233,19 @@ export function NewTripPage() {
                   {farmers.filter((farmer) => farmer.active).map((farmer) => (
                     <option key={farmer.id} value={farmer.id}>
                       {farmer.fullName} · {farmer.village}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="ms-field">
+                <span className="ms-label">{t("trip.crateType")}</span>
+                <select name="crateType" required defaultValue="">
+                  <option value="" disabled>
+                    {t("trip.crateTypeRequired")}
+                  </option>
+                  {CRATE_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {t(`crateType.${type}`)}
                     </option>
                   ))}
                 </select>
@@ -271,6 +287,7 @@ export function NewTripPage() {
             <article key={entry.id} className="list-card ms-card" style={{ marginTop: 12 }}>
               <strong>{entry.farmerName}</strong>
               <p className="muted">
+                {entry.crateType ? `${t(`crateType.${entry.crateType}`)} · ` : ""}
                 {entry.crateCount || "—"} {t("trip.crates")} · {formatInrFromPaise(entry.freightAmountPaise)} · {entry.rateSource}
                 {farmerDue != null ? (
                   <>
@@ -334,5 +351,21 @@ export function NewTripPage() {
         />
       ) : null}
     </section>
+  );
+}
+
+function CrateTypeTotals({ entries }: { entries: Trip["entries"] }) {
+  const { t } = useTranslation();
+  const totals = CRATE_TYPES.map((type) => ({
+    type,
+    count: entries.filter((entry) => entry.crateType === type).reduce((sum, entry) => sum + entry.crateCount, 0)
+  })).filter((item) => item.count > 0);
+
+  if (totals.length === 0) return null;
+
+  return (
+    <p className="muted">
+      {totals.map((item) => `${t(`crateType.${item.type}`)} ${item.count}`).join(" · ")}
+    </p>
   );
 }
