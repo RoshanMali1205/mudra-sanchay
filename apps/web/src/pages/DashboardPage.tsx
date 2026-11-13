@@ -20,7 +20,7 @@ export function DashboardPage() {
   const [from, setFrom] = useState(kolkataToday());
   const [to, setTo] = useState(kolkataToday());
   const range = useMemo(() => resolveDateRange(preset, from, to), [preset, from, to]);
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["dashboard", range.label, range.from, range.to],
     queryFn: () =>
       api<DashboardSummary>(`/dashboard/summary?preset=${range.label}&from=${range.from}&to=${range.to}`)
@@ -31,7 +31,8 @@ export function DashboardPage() {
       api<DailySheet>(`/reports/daily-sheet?preset=${range.label}&from=${range.from}&to=${range.to}`)
   });
 
-  const money = (paise = 0) => formatInrFromPaise(paise, locale);
+  const money = (paise = 0) => (isLoading ? "…" : formatInrFromPaise(paise, locale));
+  const count = (value?: number) => (isLoading ? "…" : String(value ?? 0));
 
   return (
     <section>
@@ -90,48 +91,54 @@ export function DashboardPage() {
           imageAlt=""
         />
         <MetricCard
-          label={t("dashboard.netCash")}
-          value={money(data?.cashSurplusPaise)}
-          tone="accent"
-          hint={t("dashboard.cashHint")}
-          imageSrc="/images/tile-payment.svg"
-          imageAlt=""
-        />
-        <MetricCard
-          label={t("dashboard.crates")}
-          value={String(data?.crates ?? 0)}
-          imageSrc="/images/tomato-crate-square.png"
-          imageAlt=""
-          imagePosition="center"
-        />
-        <MetricCard
-          label={t("dashboard.trips")}
-          value={String(data?.trips ?? 0)}
-          imageSrc="/images/tile-trip.svg"
-          imageAlt=""
-        />
-        <MetricCard
-          label={t("dashboard.farmersToday")}
-          value={String(data?.farmerCount ?? sheet?.farmerCount ?? 0)}
-          imageSrc="/images/tile-farmer.svg"
-          imageAlt=""
-        />
-        <MetricCard
           label={t("dashboard.outstanding")}
           value={money(data?.outstandingPaise)}
+          tone="accent"
           imageSrc="/images/farm-fields.png"
           imageAlt=""
           imagePosition="70% 60%"
         />
-        <MetricCard
-          label={t("dashboard.accrualProfit")}
-          value={money(data?.accrualProfitPaise)}
-          hint={t("dashboard.accrualHint")}
-          imageSrc="/images/tomato-crates.png"
-          imageAlt=""
-          imagePosition="left center"
-        />
       </div>
+      <details className="more-figures ms-card">
+        <summary>{t("dashboard.moreFigures")}</summary>
+        <div className="metric-grid">
+          <MetricCard
+            label={t("dashboard.netCash")}
+            value={money(data?.cashSurplusPaise)}
+            tone="accent"
+            hint={t("dashboard.cashHint")}
+            imageSrc="/images/tile-payment.svg"
+            imageAlt=""
+          />
+          <MetricCard
+            label={t("dashboard.crates")}
+            value={count(data?.crates)}
+            imageSrc="/images/tomato-crate-square.png"
+            imageAlt=""
+            imagePosition="center"
+          />
+          <MetricCard
+            label={t("dashboard.trips")}
+            value={count(data?.trips)}
+            imageSrc="/images/tile-trip.svg"
+            imageAlt=""
+          />
+          <MetricCard
+            label={t("dashboard.farmersToday")}
+            value={count(data?.farmerCount ?? sheet?.farmerCount)}
+            imageSrc="/images/tile-farmer.svg"
+            imageAlt=""
+          />
+          <MetricCard
+            label={t("dashboard.accrualProfit")}
+            value={money(data?.accrualProfitPaise)}
+            hint={t("dashboard.accrualHint")}
+            imageSrc="/images/tomato-crates.png"
+            imageAlt=""
+            imagePosition="left center"
+          />
+        </div>
+      </details>
       {sheet?.farmers?.length ? (
         <div className="section-block">
           <h2>{range.label === "today" ? t("dashboard.farmersToday") : t("dashboard.dayFarmers")}</h2>
@@ -162,27 +169,23 @@ export function DashboardPage() {
         <div className="quick-grid">
           <Link className="action-card action-card-primary" to="/trips/new">
             <img className="action-card-media" src="/images/tile-trip.svg" alt="" />
-            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
             <p className="action-card-label">{t("trip.new")}</p>
           </Link>
           <Link className="action-card action-card-primary" to="/farmers/new">
             <img className="action-card-media" src="/images/tile-farmer.svg" alt="" />
-            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
             <p className="action-card-label">{t("farmer.new")}</p>
           </Link>
           <Link className="action-card action-card-accent" to="/payments/new">
             <img className="action-card-media" src="/images/tile-payment.svg" alt="" />
-            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
             <p className="action-card-label">{t("payment.new")}</p>
           </Link>
           <Link className="action-card action-card-accent" to="/expenses/new">
             <img className="action-card-media" src="/images/tile-expense.svg" alt="" />
-            <p className="action-card-kicker">{t("dashboard.quickActions")}</p>
             <p className="action-card-label">{t("expense.new")}</p>
           </Link>
         </div>
       </div>
-      {data && data.trips === 0 ? (
+      {!isLoading && data && data.trips === 0 ? (
         <div style={{ marginTop: 16 }}>
           <EmptyState
             title={t("dashboard.today")}

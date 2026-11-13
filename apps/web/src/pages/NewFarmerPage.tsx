@@ -65,7 +65,7 @@ export function NewFarmerPage() {
         </label>
         <label className="ms-field">
           <span className="ms-label">{t("farmer.opening")}</span>
-          <input name="opening" type="number" min={0} step="1" defaultValue={0} />
+          <input name="opening" type="number" inputMode="decimal" min={0} step="1" defaultValue={0} />
         </label>
         {error ? <p className="ms-error">{error}</p> : null}
         <SaveStatus state={state} saved={t("status.saved")} saving={t("status.saving")} error={t("status.error")} />

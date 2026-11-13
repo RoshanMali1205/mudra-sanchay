@@ -201,7 +201,7 @@ export function ReceiptsPage() {
           </label>
           <label className="ms-field">
             <span className="ms-label">{t("receipt.net")}</span>
-            <input name="net" type="number" min={0} step="0.01" defaultValue={current.netAmountPaise / 100} />
+            <input name="net" type="number" inputMode="decimal" min={0} step="0.01" defaultValue={current.netAmountPaise / 100} />
           </label>
           <div className="form-actions">
             <button className="ms-btn ms-btn-primary">{t("action.save")}</button>
@@ -215,7 +215,7 @@ export function ReceiptsPage() {
           </label>
           <label className="ms-field">
             <span className="ms-label">{t("payment.amount")}</span>
-            <input name="amount" type="number" min={1} step="0.01" required />
+            <input name="amount" type="number" inputMode="decimal" min={1} step="0.01" required />
           </label>
           <label className="ms-field">
             <span className="ms-label">{t("payment.mode")}</span>

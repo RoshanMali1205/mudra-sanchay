@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 export function ConfirmDialog({
   title,
@@ -15,10 +16,34 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCancelRef = useRef(onCancel);
+  onCancelRef.current = onCancel;
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.querySelector("button")?.focus();
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onCancelRef.current();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      previouslyFocused?.focus();
+    };
+  }, []);
+
   return (
     <div className="sheet-backdrop" role="presentation" onClick={onCancel}>
-      <div className="sheet" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <h2>{title}</h2>
+      <div
+        ref={dialogRef}
+        className="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <h2 id="confirm-dialog-title">{title}</h2>
         <p className="muted">{body}</p>
         <button className="ms-btn ms-btn-primary" onClick={onConfirm}>
           {confirmLabel}
@@ -96,6 +121,35 @@ export function DateRangePicker({
         </div>
       ) : null}
     </div>
+  );
+}
+
+export function PasswordField({
+  label,
+  name,
+  autoComplete
+}: {
+  label: string;
+  name: string;
+  autoComplete: string;
+}) {
+  const { t } = useTranslation();
+  const [show, setShow] = useState(false);
+  return (
+    <label className="ms-field">
+      <span className="ms-label">{label}</span>
+      <span className="password-row">
+        <input name={name} type={show ? "text" : "password"} autoComplete={autoComplete} minLength={8} required />
+        <button
+          type="button"
+          className="ms-btn ms-btn-ghost"
+          aria-pressed={show}
+          onClick={() => setShow((value) => !value)}
+        >
+          {show ? t("action.hidePassword") : t("action.showPassword")}
+        </button>
+      </span>
+    </label>
   );
 }
 

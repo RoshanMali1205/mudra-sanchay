@@ -15,7 +15,7 @@ export function FarmerProfilePage() {
     queryFn: () => api<{ farmer: FarmerSummary; ledger: LedgerLine[] }>(`/farmers/${farmerId}`)
   });
 
-  if (isLoading) return <p className="muted">Loading…</p>;
+  if (isLoading) return <p className="muted">{t("status.loading")}</p>;
   if (isError || !data) {
     return <p className="ms-error">{error instanceof Error ? error.message : t("status.error")}</p>;
   }
@@ -71,6 +71,11 @@ export function FarmerProfilePage() {
         <Link className="ms-btn ms-btn-primary" to={`/payments/new?farmerId=${farmer.id}`}>
           {t("payment.new")}
         </Link>
+        {farmer.mobile ? (
+          <a className="ms-btn ms-btn-ghost" href={`tel:${farmer.mobile.replace(/[^\d+]/g, "")}`}>
+            {t("farmer.call")}
+          </a>
+        ) : null}
         <Link className="ms-btn ms-btn-accent" to={`/farmers/${farmer.id}/statement`}>
           {t("farmer.statement")}
         </Link>
@@ -80,6 +85,7 @@ export function FarmerProfilePage() {
       </div>
       <div className="section-block">
         <h2>{t("farmer.statement")}</h2>
+        {ledger.length === 0 ? <p className="muted">{t("farmer.noActivity")}</p> : null}
         <div className="stack-list">
           {ledger.map((line) => (
             <article key={line.id} className="ms-card list-card">

@@ -13,7 +13,7 @@ function tripFarmerCount(trip: Trip) {
 export function TripsPage() {
   const { t } = useTranslation();
   const [date, setDate] = useState("");
-  const { data = [] } = useQuery({
+  const { data = [], isLoading } = useQuery({
     queryKey: ["trips", date],
     queryFn: () => api<Trip[]>(date ? `/trips?date=${date}` : "/trips")
   });
@@ -26,11 +26,20 @@ export function TripsPage() {
           {t("trip.new")}
         </Link>
       </header>
-      <label className="ms-field compact-filter">
-        <span className="ms-label">{t("trip.date")}</span>
-        <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-      </label>
-      {data.length === 0 ? (
+      <div className="filters-panel compact-filter">
+        <label className="ms-field">
+          <span className="ms-label">{t("trip.date")}</span>
+          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+        </label>
+        {date ? (
+          <button type="button" className="ms-btn ms-btn-ghost" onClick={() => setDate("")}>
+            {t("action.clear")}
+          </button>
+        ) : null}
+      </div>
+      {isLoading ? (
+        <p className="muted">{t("status.loading")}</p>
+      ) : data.length === 0 ? (
         <EmptyState
           title={t("nav.trips")}
           body={t("dashboard.empty")}

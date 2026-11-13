@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -14,6 +14,9 @@ export function NewPaymentPage() {
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [pending, setPending] = useState<Record<string, unknown> | null>(null);
   const [correcting, setCorrecting] = useState<Payment | null>(null);
+  const [farmerId, setFarmerId] = useState(params.get("farmerId") ?? "");
+  const [farmerQuery, setFarmerQuery] = useState("");
+  const [amount, setAmount] = useState("");
   const { data: farmers = [] } = useQuery({
     queryKey: ["farmers"],
     queryFn: () => api<FarmerSummary[]>("/farmers")
@@ -22,8 +25,21 @@ export function NewPaymentPage() {
     queryKey: ["payments"],
     queryFn: () => api<Payment[]>("/payments")
   });
-  const selectedId = params.get("farmerId") ?? farmers[0]?.id;
-  const selected = farmers.find((farmer) => farmer.id === selectedId);
+  useEffect(() => {
+    if (!farmerId && farmers[0]) setFarmerId(farmers[0].id);
+  }, [farmerId, farmers]);
+
+  const selected = farmers.find((farmer) => farmer.id === farmerId);
+  const farmerNeedle = farmerQuery.trim().toLowerCase();
+  const visibleFarmers = useMemo(
+    () =>
+      farmers.filter((farmer) => {
+        if (!farmerNeedle) return true;
+        const hay = `${farmer.fullName} ${farmer.village} ${farmer.mobile ?? ""} ${farmer.farmerCode}`.toLowerCase();
+        return hay.includes(farmerNeedle) || farmer.id === farmerId;
+      }),
+    [farmers, farmerNeedle, farmerId]
+  );
 
   async function submit(body: Record<string, unknown>, confirmAdvance = false) {
     setState("saving");
@@ -34,6 +50,7 @@ export function NewPaymentPage() {
         body: JSON.stringify({ ...body, confirmAdvance })
       });
       setState("saved");
+      setAmount("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["payments"] }),
         queryClient.invalidateQueries({ queryKey: ["farmers"] }),
@@ -54,9 +71,9 @@ export function NewPaymentPage() {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     void submit({
-      farmerId: form.get("farmerId"),
+      farmerId,
       paymentDate: form.get("paymentDate"),
-      amountPaise: rupeesToPaise(Number(form.get("amount"))),
+      amountPaise: rupeesToPaise(Number(amount)),
       mode: form.get("mode")
     });
   }
@@ -65,30 +82,64 @@ export function NewPaymentPage() {
     <section>
       <header className="page-header">
         <h1>{t("payment.new")}</h1>
-        {selected ? (
-          <p className="muted">
-            {t("payment.balance")}: {formatInrFromPaise(selected.outstandingPaise)}
-          </p>
-        ) : null}
       </header>
       <form className="ms-card form-card" onSubmit={onSubmit}>
         <label className="ms-field">
+          <span className="ms-label">{t("action.search")}</span>
+          <input
+            type="search"
+            value={farmerQuery}
+            onChange={(event) => setFarmerQuery(event.target.value)}
+            placeholder={t("farmer.searchPlaceholder")}
+            autoComplete="off"
+          />
+        </label>
+        <label className="ms-field">
           <span className="ms-label">{t("farmer.name")}</span>
-          <select name="farmerId" defaultValue={selectedId} required>
-            {farmers.map((farmer) => (
+          <select name="farmerId" value={farmerId} required onChange={(event) => setFarmerId(event.target.value)}>
+            {visibleFarmers.map((farmer) => (
               <option key={farmer.id} value={farmer.id}>
-                {farmer.fullName}
+                {farmer.fullName} · {farmer.village}
               </option>
             ))}
           </select>
         </label>
+        {visibleFarmers.length === 0 ? <p className="ms-error">{t("farmer.noMatches")}</p> : null}
+        {selected ? (
+          <div className="balance-banner">
+            <span>
+              {t("payment.balance")}
+              <strong className={selected.outstandingPaise > 0 ? "due-amount" : "due-zero"}>
+                {" "}
+                {formatInrFromPaise(selected.outstandingPaise)}
+              </strong>
+            </span>
+            <button
+              type="button"
+              className="ms-btn ms-btn-ghost"
+              disabled={selected.outstandingPaise <= 0}
+              onClick={() => setAmount((selected.outstandingPaise / 100).toFixed(2))}
+            >
+              {t("payment.payBalance")}
+            </button>
+          </div>
+        ) : null}
         <label className="ms-field">
           <span className="ms-label">{t("trip.date")}</span>
           <input name="paymentDate" type="date" defaultValue={today} required />
         </label>
         <label className="ms-field">
           <span className="ms-label">{t("payment.amount")}</span>
-          <input name="amount" type="number" min={1} step="0.01" required />
+          <input
+            name="amount"
+            type="number"
+            inputMode="decimal"
+            min={1}
+            step="0.01"
+            required
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+          />
         </label>
         <label className="ms-field">
           <span className="ms-label">{t("payment.mode")}</span>

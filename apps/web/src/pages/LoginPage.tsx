@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { useSessionStore } from "../store";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { PasswordField } from "../components/UiBits";
 import type { SessionUser } from "@mudra-sanchay/shared";
 
 export function LoginPage() {
@@ -12,7 +13,6 @@ export function LoginPage() {
   const setToken = useSessionStore((state) => state.setToken);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,19 +54,7 @@ export function LoginPage() {
           <span className="ms-label">{t("auth.email")}</span>
           <input name="email" type="email" autoComplete="email" required />
         </label>
-        <label className="ms-field">
-          <span className="ms-label">{t("auth.password")}</span>
-          <input
-            name="password"
-            type={showPassword ? "text" : "password"}
-            autoComplete="current-password"
-            minLength={8}
-            required
-          />
-          <button type="button" className="ms-btn ms-btn-ghost" onClick={() => setShowPassword((value) => !value)}>
-            {showPassword ? t("action.hidePassword") : t("action.showPassword")}
-          </button>
-        </label>
+        <PasswordField label={t("auth.password")} name="password" autoComplete="current-password" />
         {error ? <p className="ms-error">{error}</p> : null}
         <button className="ms-btn ms-btn-primary" disabled={pending}>
           {pending ? t("status.saving") : t("action.login")}
