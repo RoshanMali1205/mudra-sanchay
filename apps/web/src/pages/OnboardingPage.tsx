@@ -85,7 +85,7 @@ export function OnboardingPage() {
         </label>
         <label className="ms-field">
           <span className="ms-label">{t("onboarding.defaultRate")}</span>
-          <input name="defaultRate" type="number" min={0} step="1" defaultValue={25} required />
+          <input name="defaultRate" type="number" inputMode="decimal" min={0} step="1" defaultValue={25} required />
         </label>
         {error ? <p className="ms-error">{error}</p> : null}
         <button className="ms-btn ms-btn-primary">{t("action.continue")}</button>

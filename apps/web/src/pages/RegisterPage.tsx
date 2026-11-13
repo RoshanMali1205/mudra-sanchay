@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { useSessionStore } from "../store";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { PasswordField } from "../components/UiBits";
 import type { SessionUser } from "@mudra-sanchay/shared";
 
 export function RegisterPage() {
@@ -51,10 +52,7 @@ export function RegisterPage() {
           <span className="ms-label">{t("auth.email")}</span>
           <input name="email" type="email" required />
         </label>
-        <label className="ms-field">
-          <span className="ms-label">{t("auth.password")}</span>
-          <input name="password" type="password" minLength={8} required />
-        </label>
+        <PasswordField label={t("auth.password")} name="password" autoComplete="new-password" />
         {error ? <p className="ms-error">{error}</p> : null}
         <button className="ms-btn ms-btn-primary" disabled={pending}>
           {t("action.register")}

@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -27,6 +27,7 @@ export function ExpensesPage() {
   const [from, setFrom] = useState(resolveDateRange("month").from);
   const [to, setTo] = useState(kolkataToday());
   const [category, setCategory] = useState("");
+  const [vehicleId, setVehicleId] = useState(() => localStorage.getItem("ms-last-vehicle") ?? "");
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [exporting, setExporting] = useState(false);
   const range = useMemo(() => resolveDateRange(preset, from, to), [preset, from, to]);
@@ -38,6 +39,13 @@ export function ExpensesPage() {
         `/expenses?from=${range.from}&to=${range.to}${category ? `&category=${category}` : ""}`
       )
   });
+
+  useEffect(() => {
+    if (!vehicles.length) return;
+    if (!vehicles.some((vehicle) => vehicle.id === vehicleId)) {
+      setVehicleId(vehicles[0]?.id ?? "");
+    }
+  }, [vehicles, vehicleId]);
 
   const total = expenses.reduce((sum, item) => sum + item.amountPaise, 0);
 
@@ -53,10 +61,11 @@ export function ExpensesPage() {
           categoryCode: form.get("categoryCode"),
           amountPaise: rupeesToPaise(Number(form.get("amount"))),
           vendorName: form.get("vendorName") || undefined,
-          vehicleId: form.get("vehicleId") || undefined,
+          vehicleId: vehicleId || undefined,
           notes: form.get("notes") || undefined
         })
       });
+      if (vehicleId) localStorage.setItem("ms-last-vehicle", vehicleId);
       setState("saved");
       await queryClient.invalidateQueries({ queryKey: ["expenses"] });
       await queryClient.invalidateQueries({ queryKey: ["dashboard"] });
@@ -116,7 +125,7 @@ export function ExpensesPage() {
           </div>
           <label className="ms-field">
             <span className="ms-label">{t("payment.amount")}</span>
-            <input name="amount" type="number" min={1} step="0.01" required />
+            <input name="amount" type="number" inputMode="decimal" min={1} step="0.01" required />
           </label>
           <label className="ms-field">
             <span className="ms-label">{t("trip.date")}</span>
@@ -124,7 +133,7 @@ export function ExpensesPage() {
           </label>
           <label className="ms-field">
             <span className="ms-label">Vehicle</span>
-            <select name="vehicleId" defaultValue={vehicles[0]?.id}>
+            <select name="vehicleId" value={vehicleId} onChange={(event) => setVehicleId(event.target.value)}>
               {vehicles.map((vehicle) => (
                 <option key={vehicle.id} value={vehicle.id}>
                   {vehicle.displayName}

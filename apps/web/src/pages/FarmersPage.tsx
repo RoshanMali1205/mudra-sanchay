@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -9,12 +9,17 @@ import { api } from "../api";
 export function FarmersPage() {
   const { t } = useTranslation();
   const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
   const [archived, setArchived] = useState(false);
-  const { data = [] } = useQuery({
-    queryKey: ["farmers", q, archived],
+  useEffect(() => {
+    const timer = window.setTimeout(() => setQuery(q.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [q]);
+  const { data = [], isLoading } = useQuery({
+    queryKey: ["farmers", query, archived],
     queryFn: () =>
       api<FarmerSummary[]>(
-        `/farmers?archived=${archived ? "true" : "false"}${q ? `&q=${encodeURIComponent(q)}` : ""}`
+        `/farmers?archived=${archived ? "true" : "false"}${query ? `&q=${encodeURIComponent(query)}` : ""}`
       )
   });
 
@@ -30,22 +35,33 @@ export function FarmersPage() {
         </Link>
       </header>
       <div className="filters-panel search-bar">
-        <input
-          className="search-input"
-          value={q}
-          onChange={(event) => setQ(event.target.value)}
-          placeholder={t("farmer.searchPlaceholder")}
-          aria-label={t("action.search")}
-        />
+        <div className="search-field">
+          <input
+            className="search-input"
+            type="search"
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
+            placeholder={t("farmer.searchPlaceholder")}
+            aria-label={t("action.search")}
+            autoComplete="off"
+          />
+          {q ? (
+            <button type="button" className="affix-btn" onClick={() => setQ("")}>
+              {t("action.clear")}
+            </button>
+          ) : null}
+        </div>
         <label className="ms-check">
           <input type="checkbox" checked={archived} onChange={(event) => setArchived(event.target.checked)} />
           <span>{t("farmer.archived")}</span>
         </label>
       </div>
-      {data.length === 0 ? (
+      {isLoading ? (
+        <p className="muted">{t("status.loading")}</p>
+      ) : data.length === 0 ? (
         <EmptyState
           title={t("nav.farmers")}
-          body={t("farmer.empty")}
+          body={query ? t("farmer.noMatches") : t("farmer.empty")}
           imageSrc="/images/farm-fields.png"
           imageAlt="Farm fields"
         />

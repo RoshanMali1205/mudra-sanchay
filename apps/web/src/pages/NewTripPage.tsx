@@ -27,6 +27,8 @@ export function NewTripPage() {
   const [reopenReason, setReopenReason] = useState("");
   const [rateRupees, setRateRupees] = useState(25);
   const [typeCounts, setTypeCounts] = useState<Record<string, string>>(emptyTypeCounts());
+  const [farmerQuery, setFarmerQuery] = useState("");
+  const [pendingRemove, setPendingRemove] = useState<string | null>(null);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
   const { data: vehicles = [] } = useQuery({ queryKey: ["vehicles"], queryFn: () => api<Vehicle[]>("/vehicles") });
@@ -46,6 +48,22 @@ export function NewTripPage() {
       setTrip(loaded);
       return loaded;
     }
+  });
+
+  function bumpCount(code: string, delta: number) {
+    setTypeCounts((current) => {
+      const next = Math.max(0, (Number(current[code]) || 0) + delta);
+      return { ...current, [code]: next === 0 ? "" : String(next) };
+    });
+  }
+
+  const activeFarmers = farmers.filter((farmer) => farmer.active);
+  const farmerNeedle = farmerQuery.trim().toLowerCase();
+  const matchedFarmers = activeFarmers.filter((farmer) => {
+    if (!farmerNeedle) return true;
+    return `${farmer.fullName} ${farmer.village} ${farmer.mobile ?? ""} ${farmer.farmerCode}`
+      .toLowerCase()
+      .includes(farmerNeedle);
   });
 
   const previewCrates = CRATE_TYPE_CODES.reduce((sum, code) => sum + (Number(typeCounts[code]) || 0), 0);
@@ -252,7 +270,7 @@ export function NewTripPage() {
         </form>
       ) : trip ? (
         <>
-          <article className="ms-card form-card">
+          <article className="ms-card form-card trip-summary">
             <div className="row-between">
               <strong>
                 {trip.tripDate} · {t("trip.number")} {trip.tripNumber}
@@ -296,41 +314,88 @@ export function NewTripPage() {
                 });
               }}
             >
-              <label className="ms-field">
-                <span className="ms-label">{t("farmer.name")}</span>
-                <select name="farmerId" required>
-                  {farmers.filter((farmer) => farmer.active).map((farmer) => (
-                    <option key={farmer.id} value={farmer.id}>
-                      {farmer.fullName} · {farmer.village}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {activeFarmers.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  {t("farmer.empty")} <Link to="/farmers/new">{t("farmer.new")}</Link>
+                </p>
+              ) : (
+                <>
+                  <label className="ms-field">
+                    <span className="ms-label">{t("action.search")}</span>
+                    <input
+                      type="search"
+                      value={farmerQuery}
+                      onChange={(event) => setFarmerQuery(event.target.value)}
+                      placeholder={t("farmer.searchPlaceholder")}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label className="ms-field">
+                    <span className="ms-label">{t("farmer.name")}</span>
+                    <select name="farmerId" required>
+                      {matchedFarmers.map((farmer) => (
+                        <option key={farmer.id} value={farmer.id}>
+                          {farmer.fullName} · {farmer.village}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {matchedFarmers.length === 0 ? <p className="ms-error">{t("farmer.noMatches")}</p> : null}
+                </>
+              )}
               <p className="muted" style={{ margin: 0 }}>
                 {t("trip.crateTypesHint")}
               </p>
-              {CRATE_TYPE_CODES.map((code) => (
-                <label className="ms-field" key={code}>
-                  <span className="ms-label">{t(`trip.crateType.${code}`)}</span>
-                  <input
-                    name={`count_${code}`}
-                    type="number"
-                    min={0}
-                    inputMode="numeric"
-                    placeholder="0"
-                    value={typeCounts[code] ?? ""}
-                    onChange={(event) =>
-                      setTypeCounts((current) => ({ ...current, [code]: event.target.value }))
-                    }
-                  />
-                </label>
-              ))}
+              <div className="stepper-grid">
+                {CRATE_TYPE_CODES.map((code) => {
+                  const count = Number(typeCounts[code]) || 0;
+                  return (
+                    <div className="stepper" key={code}>
+                      <span className="stepper-label">{t(`trip.crateType.${code}`)}</span>
+                      <span className="stepper-controls">
+                        <button
+                          type="button"
+                          aria-label={`${t("trip.decrease")} ${t(`trip.crateType.${code}`)}`}
+                          disabled={count <= 0}
+                          onClick={() => bumpCount(code, -1)}
+                        >
+                          −
+                        </button>
+                        <input
+                          name={`count_${code}`}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          aria-label={t(`trip.crateType.${code}`)}
+                          placeholder="0"
+                          value={typeCounts[code] ?? ""}
+                          onChange={(event) =>
+                            setTypeCounts((current) => ({
+                              ...current,
+                              [code]: event.target.value.replace(/[^\d]/g, "")
+                            }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          aria-label={`${t("trip.increase")} ${t(`trip.crateType.${code}`)}`}
+                          onClick={() => bumpCount(code, 1)}
+                        >
+                          +
+                        </button>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
               <label className="ms-field">
                 <span className="ms-label">{t("trip.rate")}</span>
                 <input
                   name="rateRupees"
                   type="number"
+                  inputMode="decimal"
                   min={0}
+                  step="0.01"
                   value={rateRupees}
                   onChange={(event) => setRateRupees(Number(event.target.value))}
                 />
@@ -340,7 +405,7 @@ export function NewTripPage() {
               </p>
               {error ? <p className="ms-error">{error}</p> : null}
               <div className="form-actions">
-                <button className="ms-btn ms-btn-primary" disabled={addEntry.isPending}>
+                <button className="ms-btn ms-btn-primary" disabled={addEntry.isPending || matchedFarmers.length === 0}>
                   {t("trip.addEntry")}
                 </button>
               </div>
@@ -373,18 +438,20 @@ export function NewTripPage() {
                     {entry.crateType ? t(`trip.crateType.${entry.crateType}`) : t("trip.crates")} · {entry.crateCount || "—"}
                   </span>
                   {trip.status === "draft" ? (
-                    <span className="row-between" style={{ gap: 8 }}>
+                    <span className="entry-actions">
                       <input
-                        className="ms-control"
-                        type="number"
-                        min={1}
+                        className="ms-control qty-input"
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        aria-label={t("trip.crates")}
                         defaultValue={entry.crateCount || ""}
                         onBlur={(event) => {
-                          const value = Number(event.target.value);
-                          if (value > 0) void updateEntry(entry.id, value);
+                          const value = Number(event.target.value.replace(/[^\d]/g, ""));
+                          if (value > 0 && value !== entry.crateCount) void updateEntry(entry.id, value);
                         }}
                       />
-                      <button className="ms-btn ms-btn-ghost" onClick={() => void removeEntry(entry.id)}>
+                      <button className="ms-btn ms-btn-ghost" onClick={() => setPendingRemove(entry.id)}>
                         {t("action.remove")}
                       </button>
                     </span>
@@ -398,7 +465,13 @@ export function NewTripPage() {
           })}
           </div>
           {trip.status === "draft" ? (
-            <div className="form-actions" style={{ marginTop: 16 }}>
+            <div className="sticky-action">
+              <div>
+                <strong>{formatInrFromPaise(trip.totalFreightPaise)}</strong>
+                <p className="muted">
+                  {trip.totalCrates} {t("trip.crates")} · {uniqueFarmerCount} {t("trip.farmersCount")}
+                </p>
+              </div>
               <button className="ms-btn ms-btn-accent" onClick={() => setConfirmComplete(true)}>
                 {t("action.completeTrip")}
               </button>
@@ -420,6 +493,20 @@ export function NewTripPage() {
             <Link to="/trips">{t("nav.trips")}</Link>
           </p>
         </>
+      ) : null}
+      {pendingRemove ? (
+        <ConfirmDialog
+          title={t("action.remove")}
+          body={t("trip.removeConfirm")}
+          confirmLabel={t("action.remove")}
+          cancelLabel={t("action.cancel")}
+          onCancel={() => setPendingRemove(null)}
+          onConfirm={() => {
+            const entryId = pendingRemove;
+            setPendingRemove(null);
+            void removeEntry(entryId);
+          }}
+        />
       ) : null}
       {confirmComplete ? (
         <ConfirmDialog

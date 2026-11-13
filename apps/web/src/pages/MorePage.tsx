@@ -1,8 +1,12 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { api } from "../api";
+import { useSessionStore } from "../store";
 
 export function MorePage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const setToken = useSessionStore((state) => state.setToken);
   const links = [
     {
       to: "/reports",
@@ -57,6 +61,16 @@ export function MorePage() {
           </Link>
         ))}
       </div>
+      <button
+        className="ms-btn ms-btn-ghost more-logout"
+        onClick={() => {
+          void api("/auth/logout", { method: "POST" }).catch(() => undefined);
+          setToken(null);
+          navigate("/auth/login");
+        }}
+      >
+        {t("action.logout")}
+      </button>
     </section>
   );
 }
